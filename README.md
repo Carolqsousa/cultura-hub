@@ -1,6 +1,3 @@
-# cultura-hub
-Internal operations hub for Cultura Inglesa — student, financial, teacher and marketing data from Sponte, RD Station and Google Sheets.
-
 # Cultura Hub
 
 Internal operations dashboard for Cultura Inglesa — a unified view of student, financial, teacher and marketing data across all branches.
