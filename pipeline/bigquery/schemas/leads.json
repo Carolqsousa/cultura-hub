@@ -1,0 +1,7 @@
+[
+  { "name": "date",           "type": "DATE",   "mode": "REQUIRED" },
+  { "name": "branch",         "type": "STRING", "mode": "REQUIRED" },
+  { "name": "new_leads",      "type": "INT64",  "mode": "NULLABLE" },
+  { "name": "pipeline_stage", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "source",         "type": "STRING", "mode": "NULLABLE" }
+]

@@ -1,0 +1,8 @@
+[
+  { "name": "week",     "type": "DATE",    "mode": "REQUIRED" },
+  { "name": "branch",   "type": "STRING",  "mode": "REQUIRED" },
+  { "name": "manager",  "type": "STRING",  "mode": "NULLABLE" },
+  { "name": "task",     "type": "STRING",  "mode": "NULLABLE" },
+  { "name": "due_date", "type": "DATE",    "mode": "NULLABLE" },
+  { "name": "done",     "type": "BOOLEAN", "mode": "NULLABLE" }
+]

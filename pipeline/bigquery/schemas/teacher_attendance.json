@@ -1,0 +1,8 @@
+[
+  { "name": "date",              "type": "DATE",   "mode": "REQUIRED" },
+  { "name": "branch",            "type": "STRING", "mode": "REQUIRED" },
+  { "name": "teacher",           "type": "STRING", "mode": "REQUIRED" },
+  { "name": "classes_missed",    "type": "INT64",  "mode": "NULLABLE" },
+  { "name": "late_arrivals",     "type": "INT64",  "mode": "NULLABLE" },
+  { "name": "trainings_attended","type": "INT64",  "mode": "NULLABLE" }
+]

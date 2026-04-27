@@ -1,0 +1,6 @@
+[
+  { "name": "semester",             "type": "STRING", "mode": "REQUIRED" },
+  { "name": "branch",               "type": "STRING", "mode": "REQUIRED" },
+  { "name": "enrollment_goal",      "type": "INT64",  "mode": "NULLABLE" },
+  { "name": "current_enrollments",  "type": "INT64",  "mode": "NULLABLE" }
+]

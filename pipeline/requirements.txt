@@ -1,0 +1,5 @@
+google-cloud-bigquery>=3.11
+google-auth>=2.22
+gspread>=5.12          # Google Sheets
+requests>=2.31         # Sponte + RD Station REST calls
+python-dotenv>=1.0

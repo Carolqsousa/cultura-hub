@@ -1,0 +1,8 @@
+[
+  { "name": "date",          "type": "DATE",    "mode": "REQUIRED" },
+  { "name": "branch",        "type": "STRING",  "mode": "REQUIRED" },
+  { "name": "student_id",    "type": "STRING",  "mode": "REQUIRED" },
+  { "name": "class_id",      "type": "STRING",  "mode": "NULLABLE" },
+  { "name": "presence_rate", "type": "FLOAT64", "mode": "NULLABLE" },
+  { "name": "classes_missed","type": "INT64",   "mode": "NULLABLE" }
+]

@@ -1,0 +1,9 @@
+[
+  { "name": "date",          "type": "DATE",   "mode": "REQUIRED" },
+  { "name": "branch",        "type": "STRING", "mode": "REQUIRED" },
+  { "name": "class_id",      "type": "STRING", "mode": "REQUIRED" },
+  { "name": "teacher",       "type": "STRING", "mode": "NULLABLE" },
+  { "name": "total_lessons", "type": "INT64",  "mode": "NULLABLE" },
+  { "name": "completed",     "type": "INT64",  "mode": "NULLABLE" },
+  { "name": "pending",       "type": "INT64",  "mode": "NULLABLE" }
+]

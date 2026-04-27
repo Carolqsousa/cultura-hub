@@ -1,0 +1,7 @@
+[
+  { "name": "date",      "type": "DATE",   "mode": "REQUIRED" },
+  { "name": "branch",    "type": "STRING", "mode": "REQUIRED" },
+  { "name": "teacher",   "type": "STRING", "mode": "NULLABLE" },
+  { "name": "score",     "type": "FLOAT64","mode": "NULLABLE" },
+  { "name": "responses", "type": "INT64",  "mode": "NULLABLE" }
+]

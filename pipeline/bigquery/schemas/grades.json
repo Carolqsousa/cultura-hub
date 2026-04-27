@@ -1,0 +1,8 @@
+[
+  { "name": "date",       "type": "DATE",    "mode": "REQUIRED" },
+  { "name": "branch",     "type": "STRING",  "mode": "REQUIRED" },
+  { "name": "student_id", "type": "STRING",  "mode": "REQUIRED" },
+  { "name": "class_id",   "type": "STRING",  "mode": "NULLABLE" },
+  { "name": "average",    "type": "FLOAT64", "mode": "NULLABLE" },
+  { "name": "situation",  "type": "STRING",  "mode": "NULLABLE" }
+]
