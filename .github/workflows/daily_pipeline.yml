@@ -8,6 +8,8 @@ on:
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +25,7 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
 
       - name: Run pipeline
         env:
