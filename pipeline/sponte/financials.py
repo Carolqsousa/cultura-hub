@@ -1,3 +1,4 @@
+import os
 """Pull financial / delinquency data from Sponte API."""
 
 from datetime import date
@@ -11,7 +12,7 @@ def fetch(sponte_client) -> list[dict]:
     for f in raw:
         rows.append({
             "date": today,
-            "branch": f.get("branch"),
+            "branch": os.environ.get("SPONTE_BRANCH_CURRENT", ""),
             "student_id": str(f.get("student_id")),
             "amount_due": f.get("amount_due"),
             "amount_paid": f.get("amount_paid"),

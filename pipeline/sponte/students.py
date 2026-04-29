@@ -1,18 +1,18 @@
-"""Pull active students from Sponte API."""
-
+import os
 from datetime import date
 
 
 def fetch(sponte_client) -> list[dict]:
     """Return rows matching the `students` BigQuery schema."""
     today = date.today().isoformat()
-    raw = sponte_client.get_students()  # adjust to your existing client
+    branch = os.environ.get("SPONTE_BRANCH_CURRENT", "")
+    raw = sponte_client.get_students()
 
     rows = []
     for s in raw:
         rows.append({
             "date": today,
-            "branch": s.get("branch"),
+            "branch": branch,
             "student_id": str(s.get("id")),
             "name": s.get("name"),
             "status": s.get("status"),

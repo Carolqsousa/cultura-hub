@@ -56,6 +56,7 @@ def run():
             log.warning(f"=== Branch: {branch_name} — no API key set, skipping ===")
             continue
         log.info(f"=== Branch: {branch_name} ===")
+        os.environ["SPONTE_BRANCH_CURRENT"] = branch_name
         sponte = SponteClient(api_key=branch["api_key"], branch_name=branch_name)
 
         for table_name, fetch_fn in sponte_fetchers:

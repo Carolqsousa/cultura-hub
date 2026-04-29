@@ -1,3 +1,4 @@
+import os
 """Pull student attendance from Sponte API."""
 
 from datetime import date
@@ -11,7 +12,7 @@ def fetch(sponte_client) -> list[dict]:
     for a in raw:
         rows.append({
             "date": today,
-            "branch": a.get("branch"),
+            "branch": os.environ.get("SPONTE_BRANCH_CURRENT", ""),
             "student_id": str(a.get("student_id")),
             "class_id": str(a.get("class_id")) if a.get("class_id") else None,
             "presence_rate": a.get("presence_rate"),
