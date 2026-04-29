@@ -31,7 +31,13 @@ jobs:
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
           BQ_DATASET: cultura_hub
-          SPONTE_API_KEY: ${{ secrets.SPONTE_API_KEY }}
+          SPONTE_API_KEY_BOA_VIAGEM: ${{ secrets.SPONTE_API_KEY_BOA_VIAGEM }}
+          SPONTE_API_KEY_YOUNG: ${{ secrets.SPONTE_API_KEY_YOUNG }}
+          SPONTE_API_KEY_SETUBAL: ${{ secrets.SPONTE_API_KEY_SETUBAL }}
+          SPONTE_API_KEY_NATAL: ${{ secrets.SPONTE_API_KEY_NATAL }}
+          SPONTE_SEMESTER: ${{ vars.SPONTE_SEMESTER }}
+          SPONTE_START: ${{ vars.SPONTE_START }}
+          SPONTE_END: ${{ vars.SPONTE_END }}
           RD_STATION_API_KEY: ${{ secrets.RD_STATION_API_KEY }}
           GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
         run: |
