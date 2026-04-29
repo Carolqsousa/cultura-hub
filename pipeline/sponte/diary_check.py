@@ -24,10 +24,10 @@ BASE_URL = "https://webservices.sponteweb.com.br/WSApiSponteRest/api"
 # SPONTE_END       — e.g. "2026-12-31"
 # ─────────────────────────────────────────────────────────────────────────────
 
-def get_config():
+def get_config(api_key: str, branch: str):
     return {
-        "api_key":    os.environ["SPONTE_API_KEY"],
-        "branch":     os.environ.get("SPONTE_BRANCH", "Unknown"),
+        "api_key":    api_key,
+        "branch":     branch,
         "semester":   os.environ.get("SPONTE_SEMESTER", "2026.1"),
         "start_date": os.environ.get("SPONTE_START", "2026-02-01"),
         "end_date":   os.environ.get("SPONTE_END", "2026-12-31"),
@@ -97,7 +97,7 @@ def fetch(client):
         last_completed_date DATE
         run_date      DATE      (partition column)
     """
-    cfg     = get_config()
+    cfg     = get_config(api_key=client.api_key, branch=getattr(client, "branch_name", "Unknown"))
     headers = make_headers(cfg["api_key"])
     # Note: client is passed in but config still comes from env vars
     # This keeps consistency with the pipeline pattern
