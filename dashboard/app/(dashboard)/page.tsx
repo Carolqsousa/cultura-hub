@@ -1,71 +1,101 @@
-export default function OverviewPage() {
+import { query, DATASET } from "@/lib/bigquery";
+
+interface DiaryRow {
+  branch: string;
+  total_lessons: number;
+  completed: number;
+  pending: number;
+  pct_complete: number;
+}
+
+interface StudentRow {
+  branch: string;
+  total: number;
+}
+
+async function getDiaryByBranch(): Promise<DiaryRow[]> {
+  return query<DiaryRow>(`
+    SELECT
+      branch,
+      SUM(total_lessons) as total_lessons,
+      SUM(completed) as completed,
+      SUM(pending) as pending,
+      ROUND(SUM(completed) / NULLIF(SUM(total_lessons), 0) * 100, 1) as pct_complete
+    FROM \`${DATASET}.diary_checks\`
+    WHERE date = (SELECT MAX(date) FROM \`${DATASET}.diary_checks\`)
+    GROUP BY branch
+    ORDER BY branch
+  `);
+}
+
+async function getStudentsByBranch(): Promise<StudentRow[]> {
+  return query<StudentRow>(`
+    SELECT branch, COUNT(*) as total
+    FROM \`${DATASET}.students\`
+    WHERE date = (SELECT MAX(date) FROM \`${DATASET}.students\`)
+    AND status = 'Ativo'
+    GROUP BY branch
+    ORDER BY branch
+  `);
+}
+
+export default async function OverviewPage() {
+  const [diary, students] = await Promise.all([
+    getDiaryByBranch(),
+    getStudentsByBranch(),
+  ]);
+
+  const totalStudents = students.reduce((s, r) => s + Number(r.total), 0);
+  const totalPending  = diary.reduce((s, r) => s + Number(r.pending), 0);
+  const totalLessons  = diary.reduce((s, r) => s + Number(r.total_lessons), 0);
+  const totalCompleted = diary.reduce((s, r) => s + Number(r.completed), 0);
+  const overallPct    = totalLessons > 0 ? Math.round(totalCompleted / totalLessons * 100) : 0;
+
   return (
     <main className="p-6">
       <h1 className="text-2xl font-semibold mb-2">Cultura Hub</h1>
       <p className="text-sm text-gray-500 mb-8">Visão geral — todas as unidades</p>
 
       <div className="grid grid-cols-4 gap-4 mb-8">
-        <MetricCard label="Alunos ativos" value="1.243" color="text-green-600" />
-        <MetricCard label="Inadimplentes" value="87" color="text-red-500" />
-        <MetricCard label="Diários pendentes" value="23" color="text-orange-500" />
-        <MetricCard label="NPS médio" value="74" color="text-blue-600" />
+        <MetricCard label="Alunos ativos" value={totalStudents.toLocaleString("pt-BR")} color="text-green-600" />
+        <MetricCard label="Diários pendentes" value={String(totalPending)} color={totalPending > 0 ? "text-orange-500" : "text-green-600"} />
+        <MetricCard label="% diário OK" value={`${overallPct}%`} color={overallPct >= 90 ? "text-green-600" : "text-orange-500"} />
+        <MetricCard label="Turmas monitoradas" value={String(diary.reduce((s, r) => s, 0))} color="text-blue-600" />
       </div>
 
       <div className="grid grid-cols-2 gap-6 mb-6">
         <Card title="Diário de aula por unidade">
-          <BranchRow name="Boa Viagem" pct={93} pending={4} />
-          <BranchRow name="Young" pct={100} pending={0} />
-          <BranchRow name="Setubal" pct={78} pending={11} />
-          <BranchRow name="Natal" pct={85} pending={7} />
+          {diary.length === 0 && <p className="text-sm text-gray-400">Sem dados disponíveis</p>}
+          {diary.map(r => (
+            <BranchRow
+              key={r.branch}
+              name={r.branch}
+              pct={Number(r.pct_complete)}
+              pending={Number(r.pending)}
+            />
+          ))}
         </Card>
 
+        <Card title="Alunos ativos por unidade">
+          {students.length === 0 && <p className="text-sm text-gray-400">Sem dados disponíveis</p>}
+          {students.map(r => (
+            <div key={r.branch} className="flex items-center justify-between mb-3">
+              <span className="text-sm">{r.branch}</span>
+              <span className="text-sm font-medium text-green-600">{Number(r.total).toLocaleString("pt-BR")}</span>
+            </div>
+          ))}
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-2 gap-6">
         <Card title="Matrículas vs meta — 2026.1">
           <GoalRow name="Boa Viagem" current={48} goal={60} />
           <GoalRow name="Young" current={31} goal={40} />
           <GoalRow name="Setubal" current={22} goal={30} />
           <GoalRow name="Natal" current={19} goal={25} />
         </Card>
-      </div>
-
-      <div className="grid grid-cols-2 gap-6">
         <Card title="Alunos em risco">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-gray-400 border-b">
-                <th className="pb-2">Aluno</th>
-                <th className="pb-2">Unidade</th>
-                <th className="pb-2">Faltas</th>
-                <th className="pb-2">Financeiro</th>
-                <th className="pb-2">Nota</th>
-              </tr>
-            </thead>
-            <tbody>
-              <AtRiskRow name="João Silva" branch="Boa Viagem" absences={4} financial="Atrasado" grade="Abaixo" />
-              <AtRiskRow name="Maria Santos" branch="Young" absences={3} financial="Em dia" grade="Abaixo" />
-              <AtRiskRow name="Pedro Lima" branch="Setubal" absences={5} financial="Atrasado" grade="OK" />
-              <AtRiskRow name="Ana Costa" branch="Natal" absences={2} financial="Atrasado" grade="Abaixo" />
-            </tbody>
-          </table>
-        </Card>
-
-        <Card title="Professores — diário desta semana">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-gray-400 border-b">
-                <th className="pb-2">Professor</th>
-                <th className="pb-2">Turmas</th>
-                <th className="pb-2">Pendentes</th>
-                <th className="pb-2">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <TeacherRow name="Pablo Gomes" classes={3} pending={17} />
-              <TeacherRow name="Flavio Franca" classes={6} pending={2} />
-              <TeacherRow name="Edna Alves" classes={3} pending={3} />
-              <TeacherRow name="Mauro Vilela" classes={4} pending={1} />
-              <TeacherRow name="Ivanilson Melo" classes={5} pending={0} />
-            </tbody>
-          </table>
+          <p className="text-sm text-gray-400">Em breve — aguardando dados de frequência e notas</p>
         </Card>
       </div>
     </main>
@@ -99,8 +129,9 @@ function BranchRow({ name, pct, pending }: { name: string; pct: number; pending:
         <div className={`${color} h-2 rounded-full`} style={{ width: `${pct}%` }} />
       </div>
       <span className="text-sm font-medium w-10 text-right">{pct}%</span>
-      {pending > 0 && <span className="text-xs text-red-500 w-16">{pending} pend.</span>}
-      {pending === 0 && <span className="text-xs text-green-500 w-16">Em dia</span>}
+      {pending > 0
+        ? <span className="text-xs text-red-500 w-16">{pending} pend.</span>
+        : <span className="text-xs text-green-500 w-16">Em dia</span>}
     </div>
   );
 }
@@ -116,35 +147,5 @@ function GoalRow({ name, current, goal }: { name: string; current: number; goal:
       </div>
       <span className="text-sm text-gray-500">{current}/{goal}</span>
     </div>
-  );
-}
-
-function AtRiskRow({ name, branch, absences, financial, grade }: {
-  name: string; branch: string; absences: number; financial: string; grade: string;
-}) {
-  return (
-    <tr className="border-b last:border-0">
-      <td className="py-2 font-medium">{name}</td>
-      <td className="py-2 text-gray-500">{branch}</td>
-      <td className="py-2 text-orange-500">{absences}</td>
-      <td className={`py-2 ${financial === "Atrasado" ? "text-red-500" : "text-green-600"}`}>{financial}</td>
-      <td className={`py-2 ${grade === "Abaixo" ? "text-red-500" : "text-green-600"}`}>{grade}</td>
-    </tr>
-  );
-}
-
-function TeacherRow({ name, classes, pending }: { name: string; classes: number; pending: number }) {
-  return (
-    <tr className="border-b last:border-0">
-      <td className="py-2 font-medium">{name}</td>
-      <td className="py-2 text-gray-500">{classes}</td>
-      <td className={`py-2 ${pending > 0 ? "text-red-500 font-medium" : "text-gray-400"}`}>{pending}</td>
-      <td className="py-2">
-        {pending === 0
-          ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Em dia</span>
-          : <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Pendente</span>
-        }
-      </td>
-    </tr>
   );
 }
