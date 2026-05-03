@@ -1,6 +1,6 @@
 import { query, DATASET } from "@/lib/bigquery";
 
-interface DiaryRow {
+interface DiaryBranch {
   branch: string;
   total_lessons: number;
   completed: number;
@@ -8,13 +8,18 @@ interface DiaryRow {
   pct_complete: number;
 }
 
-interface StudentRow {
+interface DiaryTeacher {
+  professor: string;
   branch: string;
-  total: number;
+  classes: number;
+  total_lessons: number;
+  completed: number;
+  pending: number;
+  pct_complete: number;
 }
 
-async function getDiaryByBranch(): Promise<DiaryRow[]> {
-  return query<DiaryRow>(`
+async function getDiaryByBranch(): Promise<DiaryBranch[]> {
+  return query<DiaryBranch>(`
     SELECT
       branch,
       SUM(total_lessons) as total_lessons,
@@ -28,28 +33,34 @@ async function getDiaryByBranch(): Promise<DiaryRow[]> {
   `);
 }
 
-async function getStudentsByBranch(): Promise<StudentRow[]> {
-  return query<StudentRow>(`
-    SELECT branch, COUNT(*) as total
-    FROM \`${DATASET}.students\`
-    WHERE date = (SELECT MAX(date) FROM \`${DATASET}.students\`)
-    AND status = 'Ativo'
-    GROUP BY branch
-    ORDER BY branch
+async function getDiaryByTeacher(): Promise<DiaryTeacher[]> {
+  return query<DiaryTeacher>(`
+    SELECT
+      professor,
+      branch,
+      COUNT(*) as classes,
+      SUM(total_lessons) as total_lessons,
+      SUM(completed) as completed,
+      SUM(pending) as pending,
+      ROUND(SUM(completed) / NULLIF(SUM(total_lessons), 0) * 100, 1) as pct_complete
+    FROM \`${DATASET}.diary_checks\`
+    WHERE date = (SELECT MAX(date) FROM \`${DATASET}.diary_checks\`)
+    AND professor IS NOT NULL AND professor != ''
+    GROUP BY professor, branch
+    ORDER BY pending DESC, professor
   `);
 }
 
 export default async function OverviewPage() {
-  const [diary, students] = await Promise.all([
+  const [diary, teachers] = await Promise.all([
     getDiaryByBranch(),
-    getStudentsByBranch(),
+    getDiaryByTeacher(),
   ]);
 
-  const totalStudents = students.reduce((s, r) => s + Number(r.total), 0);
-  const totalPending  = diary.reduce((s, r) => s + Number(r.pending), 0);
-  const totalLessons  = diary.reduce((s, r) => s + Number(r.total_lessons), 0);
+  const totalPending   = diary.reduce((s, r) => s + Number(r.pending), 0);
+  const totalLessons   = diary.reduce((s, r) => s + Number(r.total_lessons), 0);
   const totalCompleted = diary.reduce((s, r) => s + Number(r.completed), 0);
-  const overallPct    = totalLessons > 0 ? Math.round(totalCompleted / totalLessons * 100) : 0;
+  const overallPct     = totalLessons > 0 ? Math.round(totalCompleted / totalLessons * 100) : 0;
 
   return (
     <main className="p-6">
@@ -57,10 +68,10 @@ export default async function OverviewPage() {
       <p className="text-sm text-gray-500 mb-8">Visão geral — todas as unidades</p>
 
       <div className="grid grid-cols-4 gap-4 mb-8">
-        <MetricCard label="Alunos ativos" value={totalStudents.toLocaleString("pt-BR")} color="text-green-600" />
+        <MetricCard label="Aulas dadas" value={totalLessons.toLocaleString("pt-BR")} color="text-blue-600" />
         <MetricCard label="Diários pendentes" value={String(totalPending)} color={totalPending > 0 ? "text-orange-500" : "text-green-600"} />
         <MetricCard label="% diário OK" value={`${overallPct}%`} color={overallPct >= 90 ? "text-green-600" : "text-orange-500"} />
-        <MetricCard label="Turmas monitoradas" value={String(diary.reduce((s, r) => s, 0))} color="text-blue-600" />
+        <MetricCard label="Turmas" value={String(diary.reduce((s) => s, 0))} color="text-gray-600" />
       </div>
 
       <div className="grid grid-cols-2 gap-6 mb-6">
@@ -76,28 +87,63 @@ export default async function OverviewPage() {
           ))}
         </Card>
 
-        <Card title="Alunos ativos por unidade">
-          {students.length === 0 && <p className="text-sm text-gray-400">Sem dados disponíveis</p>}
-          {students.map(r => (
-            <div key={r.branch} className="flex items-center justify-between mb-3">
-              <span className="text-sm">{r.branch}</span>
-              <span className="text-sm font-medium text-green-600">{Number(r.total).toLocaleString("pt-BR")}</span>
-            </div>
-          ))}
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-2 gap-6">
         <Card title="Matrículas vs meta — 2026.1">
           <GoalRow name="Boa Viagem" current={48} goal={60} />
           <GoalRow name="Young" current={31} goal={40} />
           <GoalRow name="Setubal" current={22} goal={30} />
           <GoalRow name="Natal" current={19} goal={25} />
         </Card>
-        <Card title="Alunos em risco">
-          <p className="text-sm text-gray-400">Em breve — aguardando dados de frequência e notas</p>
-        </Card>
       </div>
+
+      <Card title="Diário por professor">
+        {teachers.length === 0 && <p className="text-sm text-gray-400">Sem dados disponíveis</p>}
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-gray-400 border-b">
+              <th className="pb-2">Professor</th>
+              <th className="pb-2">Unidade</th>
+              <th className="pb-2 text-center">Turmas</th>
+              <th className="pb-2 text-center">Aulas</th>
+              <th className="pb-2 text-center">OK</th>
+              <th className="pb-2 text-center">Pendentes</th>
+              <th className="pb-2 w-32">Preenchimento</th>
+              <th className="pb-2">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {teachers.map((r, i) => {
+              const p = Number(r.pct_complete);
+              const pend = Number(r.pending);
+              return (
+                <tr key={i} className="border-b last:border-0">
+                  <td className="py-2 font-medium">{r.professor}</td>
+                  <td className="py-2 text-gray-500">{r.branch}</td>
+                  <td className="py-2 text-center">{Number(r.classes)}</td>
+                  <td className="py-2 text-center">{Number(r.total_lessons)}</td>
+                  <td className="py-2 text-center text-green-600">{Number(r.completed)}</td>
+                  <td className={`py-2 text-center font-medium ${pend > 0 ? "text-red-500" : "text-gray-400"}`}>{pend}</td>
+                  <td className="py-2">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                        <div
+                          className="h-1.5 rounded-full"
+                          style={{ width: `${p}%`, background: p === 100 ? "#1D9E75" : p >= 80 ? "#EF9F27" : "#E24B4A" }}
+                        />
+                      </div>
+                      <span style={{ color: p === 100 ? "#1D9E75" : p >= 80 ? "#BA7517" : "#A32D2D" }} className="text-xs font-medium min-w-[34px] text-right">{p}%</span>
+                    </div>
+                  </td>
+                  <td className="py-2">
+                    {pend === 0
+                      ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Em dia</span>
+                      : <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Pendente</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Card>
     </main>
   );
 }
@@ -113,7 +159,7 @@ function MetricCard({ label, value, color }: { label: string; value: string; col
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-xl border p-5">
+    <div className="bg-white rounded-xl border p-5 mb-6">
       <h2 className="text-sm font-semibold text-gray-700 mb-4">{title}</h2>
       {children}
     </div>
