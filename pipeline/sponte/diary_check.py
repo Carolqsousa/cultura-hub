@@ -138,6 +138,12 @@ def fetch(client):
         done = [l for l in get_lessons(cid, sid, 1, headers, cfg["start_date"], cfg["end_date"])
                 if parse_date(l.get("class_date")) and parse_date(l.get("class_date")) <= today]
 
+        # cancelled lessons up to today (situation=2) — count as done, no diary needed
+        cancelled = [l for l in get_lessons(cid, sid, 2, headers, cfg["start_date"], cfg["end_date"])
+                     if parse_date(l.get("class_date")) and parse_date(l.get("class_date")) <= today]
+
+        done = done + cancelled
+
         # scheduled but not confirmed up to today (situation=0) = pending
         pending = [l for l in get_lessons(cid, sid, 0, headers, cfg["start_date"], cfg["end_date"])
                    if parse_date(l.get("class_date")) and parse_date(l.get("class_date")) <= today]
