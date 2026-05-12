@@ -41,11 +41,26 @@ def ensure_table(table_name: str) -> None:
 
 
 def upsert_rows(table_name: str, rows: list[dict]) -> None:
-    """Replace today's partition with fresh rows."""
+    """Replace today's partition with fresh rows using load job (avoids streaming buffer)."""
     if not rows:
         return
+    import json as _json
+    from datetime import date as _date
     client = get_client()
     table_id = f"{PROJECT_ID}.{DATASET_ID}.{table_name}"
+    today = _date.today().isoformat()
+
+    # delete today's partition first to avoid duplicates
+    try:
+        delete_sql = f"""
+            DELETE FROM `{PROJECT_ID}.{DATASET_ID}.{table_name}`
+            WHERE date = '{today}'
+        """
+        client.query(delete_sql).result()
+    except Exception as e:
+        print(f"  [bigquery] Warning: could not delete partition for {table_name}: {e}")
+
+    # insert fresh rows using streaming insert
     errors = client.insert_rows_json(table_id, rows)
     if errors:
         raise RuntimeError(f"BigQuery insert errors for {table_name}: {errors}")
