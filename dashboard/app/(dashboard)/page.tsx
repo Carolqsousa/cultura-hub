@@ -1,6 +1,7 @@
 import { query, DATASET } from "@/lib/bigquery";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 interface DiaryBranch {
   branch: string;
