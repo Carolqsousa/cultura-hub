@@ -58,8 +58,56 @@ class SponteClient:
     def get_students(self) -> list:
         return self._list(self._get("/students"))
 
+    def get_active_classes(self, semester: str) -> list:
+        """Returns open classes for the given semester."""
+        classes = self._list(self._get("/classes"))
+        return [
+            c for c in classes
+            if c.get("situation") == 1 and semester in (c.get("name") or "")
+        ]
+
+    def get_class_detail(self, class_id: int) -> dict:
+        """Returns full class detail including members list."""
+        result = self._post("/classes", {"class_id": class_id})
+        return result if isinstance(result, dict) else {}
+
+    def get_active_student_ids(self, semester: str) -> set:
+        """Returns unique student IDs enrolled in open classes this semester."""
+        student_ids = set()
+        classes = self.get_active_classes(semester)
+        for cls in classes:
+            detail = self.get_class_detail(cls.get("class_id"))
+            for m in detail.get("members", []):
+                sid = m.get("student_id")
+                if sid:
+                    student_ids.add(sid)
+        return student_ids
+
+    def get_receivables(self, student_id: int) -> list:
+        """Returns all pending receivables for a student (paginates automatically)."""
+        all_rows = []
+        page = 1
+        while True:
+            data = self._post("/receivables", {
+                "student_id":  student_id,
+                "page_number": page
+            })
+            if not isinstance(data, list) or not data:
+                break
+            if "Nenhum registro" in str(data[0]):
+                break
+            if isinstance(data[0], dict) and data[0].get("error"):
+                break
+            pending = [p for p in data if p.get("status") == 0]
+            all_rows.extend(pending)
+            if len(data) < 20:
+                break
+            page += 1
+        return all_rows
+
     def get_financials(self) -> list:
-        return self._list(self._get("/financials"))
+        # Legacy — kept for compatibility, use get_receivables() instead
+        return []
 
     def get_attendance(self) -> list:
         return self._list(self._get("/attendance"))

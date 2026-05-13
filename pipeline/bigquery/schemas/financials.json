@@ -1,9 +1,14 @@
 [
-  { "name": "date",          "type": "DATE",    "mode": "REQUIRED" },
-  { "name": "branch",        "type": "STRING",  "mode": "REQUIRED" },
-  { "name": "student_id",    "type": "STRING",  "mode": "REQUIRED" },
-  { "name": "amount_due",    "type": "FLOAT64", "mode": "NULLABLE" },
-  { "name": "amount_paid",   "type": "FLOAT64", "mode": "NULLABLE" },
-  { "name": "status",        "type": "STRING",  "mode": "NULLABLE" },
-  { "name": "months_behind", "type": "INT64",   "mode": "NULLABLE" }
+  { "name": "date",           "type": "DATE",    "mode": "REQUIRED" },
+  { "name": "branch",         "type": "STRING",  "mode": "REQUIRED" },
+  { "name": "student_id",     "type": "STRING",  "mode": "REQUIRED" },
+  { "name": "receivable_id",  "type": "STRING",  "mode": "NULLABLE" },
+  { "name": "parcel_number",  "type": "INT64",   "mode": "NULLABLE" },
+  { "name": "description",    "type": "STRING",  "mode": "NULLABLE" },
+  { "name": "value",          "type": "FLOAT64", "mode": "NULLABLE" },
+  { "name": "maturity",       "type": "DATE",    "mode": "NULLABLE" },
+  { "name": "status",         "type": "INT64",   "mode": "NULLABLE" },
+  { "name": "value_paid",     "type": "FLOAT64", "mode": "NULLABLE" },
+  { "name": "payment_date",   "type": "DATE",    "mode": "NULLABLE" },
+  { "name": "run_date",       "type": "DATE",    "mode": "NULLABLE" }
 ]
