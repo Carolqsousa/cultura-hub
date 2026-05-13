@@ -1,7 +1,6 @@
-import { query, DATASET } from "@/lib/bigquery";
+"use client";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+import { useEffect, useState } from "react";
 
 interface DiaryBranch {
   branch: string;
@@ -28,53 +27,23 @@ interface FinancialRow {
   total_value_due: number;
 }
 
-async function getDiaryByBranch(): Promise<DiaryBranch[]> {
-  return query<DiaryBranch>(`
-    SELECT branch,
-      SUM(total_lessons) as total_lessons,
-      SUM(completed) as completed,
-      SUM(pending) as pending,
-      ROUND(SUM(completed) / NULLIF(SUM(total_lessons), 0) * 100, 1) as pct_complete
-    FROM \`${DATASET}.diary_checks\`
-    WHERE date = (SELECT MAX(date) FROM \`${DATASET}.diary_checks\`)
-    GROUP BY branch ORDER BY branch
-  `);
-}
+export default function OverviewPage() {
+  const [diary, setDiary] = useState<DiaryBranch[]>([]);
+  const [teachers, setTeachers] = useState<DiaryTeacher[]>([]);
+  const [financials, setFinancials] = useState<FinancialRow[]>([]);
+  const [loading, setLoading] = useState(true);
 
-async function getDiaryByTeacher(): Promise<DiaryTeacher[]> {
-  return query<DiaryTeacher>(`
-    SELECT professor, branch,
-      COUNT(*) as classes,
-      SUM(total_lessons) as total_lessons,
-      SUM(completed) as completed,
-      SUM(pending) as pending,
-      ROUND(SUM(completed) / NULLIF(SUM(total_lessons), 0) * 100, 1) as pct_complete
-    FROM \`${DATASET}.diary_checks\`
-    WHERE date = (SELECT MAX(date) FROM \`${DATASET}.diary_checks\`)
-    AND professor IS NOT NULL AND professor != ''
-    GROUP BY professor, branch
-    ORDER BY pending DESC, professor
-  `);
-}
-
-async function getFinancialSummary(): Promise<FinancialRow[]> {
-  return query<FinancialRow>(`
-    SELECT branch,
-      COUNT(DISTINCT student_id) as students_behind,
-      COUNT(*) as total_parcels,
-      ROUND(SUM(value), 2) as total_value_due
-    FROM \`${DATASET}.financials\`
-    WHERE date = (SELECT MAX(date) FROM \`${DATASET}.financials\`)
-    GROUP BY branch ORDER BY total_value_due DESC
-  `);
-}
-
-export default async function OverviewPage() {
-  const [diary, teachers, financials] = await Promise.all([
-    getDiaryByBranch(),
-    getDiaryByTeacher(),
-    getFinancialSummary(),
-  ]);
+  useEffect(() => {
+    fetch("/api/overview")
+      .then(r => r.json())
+      .then(d => {
+        setDiary(d.diary || []);
+        setTeachers(d.teachers || []);
+        setFinancials(d.financials || []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
 
   const totalPending        = diary.reduce((s, r) => s + Number(r.pending), 0);
   const totalLessons        = diary.reduce((s, r) => s + Number(r.total_lessons), 0);
@@ -82,6 +51,13 @@ export default async function OverviewPage() {
   const overallPct          = totalLessons > 0 ? Math.round(totalCompleted / totalLessons * 100) : 0;
   const totalStudentsBehind = financials.reduce((s, r) => s + Number(r.students_behind), 0);
   const totalValueDue       = financials.reduce((s, r) => s + Number(r.total_value_due), 0);
+
+  if (loading) return (
+    <main className="p-6">
+      <h1 className="text-2xl font-semibold mb-2">Cultura Hub</h1>
+      <p className="text-sm text-gray-400 mt-4">Carregando dados...</p>
+    </main>
+  );
 
   return (
     <main className="p-6">
