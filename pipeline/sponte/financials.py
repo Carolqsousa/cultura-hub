@@ -25,6 +25,9 @@ def fetch(sponte_client) -> list[dict]:
         pending = sponte_client.get_receivables(student_id)
 
         for p in pending:
+            maturity = _parse_date(p.get("maturity"))
+            if maturity and maturity > today:
+                continue
             rows.append({
                 "date":          today,
                 "branch":        branch,
@@ -33,7 +36,7 @@ def fetch(sponte_client) -> list[dict]:
                 "parcel_number": p.get("parcel_number"),
                 "description":   str(p.get("name") or p.get("description") or ""),
                 "value":         _safe_float(p.get("value")),
-                "maturity":      _parse_date(p.get("maturity")),
+                "maturity":      maturity,
                 "status":        int(p.get("status", 0)),
                 "value_paid":    _safe_float(p.get("value_paid")),
                 "payment_date":  _parse_date(p.get("payment_date")),
