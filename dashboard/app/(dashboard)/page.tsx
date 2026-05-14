@@ -69,8 +69,8 @@ export default function OverviewPage() {
       if (filterProf !== "all" && r.professor !== filterProf) return false;
       if (filterBranch !== "all" && r.branch !== filterBranch) return false;
       if (filterStatus === "ok" && p < 100) return false;
-      if (filterStatus === "pending" && p === 100) return false;
-      if (filterStatus === "attention" && (p === 100 || p < 70)) return false;
+      if (filterStatus === "attention" && (p < 70 || p === 100)) return false;
+      if (filterStatus === "critical" && p >= 70) return false;
       return true;
     });
 
@@ -197,7 +197,7 @@ export default function OverviewPage() {
               <option value="all">Todos os status</option>
               <option value="ok">Em dia (100%)</option>
               <option value="attention">Atenção (70–99%)</option>
-              <option value="pending">Pendente (&lt;70%)</option>
+              <option value="critical">Crítico (&lt;70%)</option>
             </select>
             <span className="text-xs text-gray-400">
               {filteredSortedTeachers.length} professor{filteredSortedTeachers.length !== 1 ? "es" : ""}
@@ -248,7 +248,7 @@ export default function OverviewPage() {
                           ? <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Em dia</span>
                           : p >= 70
                             ? <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Atenção</span>
-                            : <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Pendente</span>}
+                            : <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Crítico</span>}
                       </td>
                     </tr>
                   );
