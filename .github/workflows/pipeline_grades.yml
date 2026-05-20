@@ -1,43 +1,31 @@
 name: Pipeline — Grades
 
-# Roda Seg/Qua/Sex às 7h BRT (10h UTC)
-# Mesmo horário que students — notas e alunos ficam sincronizados
-#
-# Por que não diário?
-# Notas são atualizadas com menos frequência que diários ou financeiros.
-# Seg/Qua/Sex é suficiente para dashboards de gestão.
-#
-# Para rodar manualmente: Actions → Pipeline — Grades → Run workflow
-
 on:
   schedule:
     - cron: "0 10 * * 1,3,5"
   workflow_dispatch:
 
 jobs:
-  grades:
+  run:
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # Proteção: se travar, cancela após 30 min
-
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Install dependencies
-        run: pip install -r pipeline/requirements.txt
-
+      - run: pip install -r pipeline/requirements.txt
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
       - name: Run grades pipeline
         env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          BQ_DATASET: cultura_hub
           SPONTE_API_KEY_BOA_VIAGEM: ${{ secrets.SPONTE_API_KEY_BOA_VIAGEM }}
-          SPONTE_API_KEY_YOUNG:      ${{ secrets.SPONTE_API_KEY_YOUNG }}
-          SPONTE_API_KEY_SETUBAL:    ${{ secrets.SPONTE_API_KEY_SETUBAL }}
-          SPONTE_API_KEY_NATAL:      ${{ secrets.SPONTE_API_KEY_NATAL }}
-          GCP_CREDENTIALS_JSON:      ${{ secrets.GCP_CREDENTIALS_JSON }}
-          GCP_PROJECT_ID:            ${{ vars.GCP_PROJECT_ID }}
-          SPONTE_SEMESTER:           ${{ vars.SPONTE_SEMESTER }}
-        run: python pipeline/run_grades.py
+          SPONTE_API_KEY_YOUNG: ${{ secrets.SPONTE_API_KEY_YOUNG }}
+          SPONTE_API_KEY_SETUBAL: ${{ secrets.SPONTE_API_KEY_SETUBAL }}
+          SPONTE_API_KEY_NATAL: ${{ secrets.SPONTE_API_KEY_NATAL }}
+          SPONTE_SEMESTER: ${{ vars.SPONTE_SEMESTER }}
+        run: cd pipeline && python run_grades.py
