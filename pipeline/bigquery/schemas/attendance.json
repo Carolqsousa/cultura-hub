@@ -1,8 +1,12 @@
 [
-  { "name": "date",          "type": "DATE",    "mode": "REQUIRED" },
-  { "name": "branch",        "type": "STRING",  "mode": "REQUIRED" },
-  { "name": "student_id",    "type": "STRING",  "mode": "REQUIRED" },
-  { "name": "class_id",      "type": "STRING",  "mode": "NULLABLE" },
-  { "name": "presence_rate", "type": "FLOAT64", "mode": "NULLABLE" },
-  { "name": "classes_missed","type": "INT64",   "mode": "NULLABLE" }
+  {"name": "date",          "type": "DATE",    "mode": "NULLABLE"},
+  {"name": "branch",        "type": "STRING",  "mode": "NULLABLE"},
+  {"name": "student_id",    "type": "STRING",  "mode": "NULLABLE"},
+  {"name": "class_id",      "type": "STRING",  "mode": "NULLABLE"},
+  {"name": "class_name",    "type": "STRING",  "mode": "NULLABLE"},
+  {"name": "presences",     "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "absences",      "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "total_lessons", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "pct_presence",  "type": "FLOAT",   "mode": "NULLABLE"},
+  {"name": "run_date",      "type": "DATE",    "mode": "NULLABLE"}
 ]

@@ -1,0 +1,34 @@
+name: Pipeline — Attendance
+
+on:
+  schedule:
+    - cron: "0 10 * * 0"  # Every Sunday at 10h UTC (7h BRT)
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45   # Attendance is slow (~1000 API calls), give it time
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r pipeline/requirements.txt
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
+      - name: Run attendance pipeline
+        env:
+          GCP_PROJECT_ID:            ${{ secrets.GCP_PROJECT_ID }}
+          BQ_DATASET:                cultura_hub
+          SPONTE_API_KEY_BOA_VIAGEM: ${{ secrets.SPONTE_API_KEY_BOA_VIAGEM }}
+          SPONTE_API_KEY_YOUNG:      ${{ secrets.SPONTE_API_KEY_YOUNG }}
+          SPONTE_API_KEY_SETUBAL:    ${{ secrets.SPONTE_API_KEY_SETUBAL }}
+          SPONTE_API_KEY_NATAL:      ${{ secrets.SPONTE_API_KEY_NATAL }}
+          SPONTE_SEMESTER:           ${{ vars.SPONTE_SEMESTER }}
+          SPONTE_START:              ${{ vars.SPONTE_START }}
+          SPONTE_END:                ${{ vars.SPONTE_END }}
+        run: cd pipeline && python run_attendance.py
