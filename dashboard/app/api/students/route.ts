@@ -17,14 +17,33 @@ export async function GET(request: Request) {
       WHERE date = (SELECT MAX(date) FROM \`${DATASET}.students\`)
     ),
     latest_attendance AS (
-      SELECT student_id, class_name, pct_presence, presences, absences, total_lessons
+      SELECT student_id, class_id, class_name, pct_presence, presences, absences, total_lessons
       FROM \`${DATASET}.attendance\`
       WHERE date = (SELECT MAX(date) FROM \`${DATASET}.attendance\`)
+      QUALIFY ROW_NUMBER() OVER (PARTITION BY student_id, class_id ORDER BY date DESC) = 1
     ),
     latest_grades AS (
-      SELECT student_id, class_name, overall_average, grade_format, provas_entered
+      SELECT student_id, class_id, class_name, overall_average, grade_format, provas_entered
       FROM \`${DATASET}.grades\`
       WHERE date = (SELECT MAX(date) FROM \`${DATASET}.grades\`)
+        AND grade_format = 'A'
+      QUALIFY ROW_NUMBER() OVER (PARTITION BY student_id, class_id ORDER BY date DESC) = 1
+    ),
+    combined AS (
+      SELECT
+        COALESCE(a.student_id, g.student_id) as student_id,
+        COALESCE(a.class_id, g.class_id) as class_id,
+        COALESCE(a.class_name, g.class_name) as class_name,
+        a.pct_presence,
+        a.presences,
+        a.absences,
+        a.total_lessons,
+        g.overall_average,
+        g.grade_format,
+        g.provas_entered
+      FROM latest_attendance a
+      FULL JOIN latest_grades g
+        ON a.student_id = g.student_id AND a.class_id = g.class_id
     ),
     latest_financials AS (
       SELECT
@@ -46,22 +65,21 @@ export async function GET(request: Request) {
       s.student_id,
       s.name,
       s.branch,
-      COALESCE(a.class_name, g.class_name) as class_name,
+      c.class_name,
       d.professor as teacher,
-      a.pct_presence,
-      a.presences,
-      a.absences,
-      a.total_lessons,
-      g.overall_average,
-      g.grade_format,
-      g.provas_entered,
+      c.pct_presence,
+      c.presences,
+      c.absences,
+      c.total_lessons,
+      c.overall_average,
+      c.grade_format,
+      c.provas_entered,
       COALESCE(f.open_installments, 0) as open_installments,
       COALESCE(f.total_value, 0.0) as total_value
     FROM latest_students s
-    LEFT JOIN latest_attendance a ON s.student_id = a.student_id
-    LEFT JOIN latest_grades g ON s.student_id = g.student_id
+    JOIN combined c ON s.student_id = c.student_id
     LEFT JOIN latest_financials f ON s.student_id = f.student_id
-    LEFT JOIN latest_diary d ON COALESCE(a.class_name, g.class_name) = d.class_name
+    LEFT JOIN latest_diary d ON c.class_name = d.class_name
     WHERE 1=1 ${branchFilter}
     ORDER BY s.branch, s.name
   `);
