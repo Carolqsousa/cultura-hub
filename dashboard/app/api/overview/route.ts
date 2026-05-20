@@ -1,16 +1,9 @@
-
-
-
-
-
-grep -n "Diário por professor\|professor\|updated" ~/Desktop/cultura-hub/dashboard/app/\(dashboard\)/page.tsx | head -10
-grep -n "Diário por professor\|professor\|updated" ~/Desktop/cultura-hub/dashboard/app/\(dashboard\)/page.tsx | head -10
 import { query, DATASET } from "@/lib/bigquery";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const [diary, teachers, financials] = await Promise.all([
+  const [diary, teachers, financials, lastUpdate] = await Promise.all([
     query(`
       SELECT branch,
         SUM(total_lessons) as total_lessons,
@@ -43,8 +36,16 @@ export async function GET() {
       WHERE date = (SELECT MAX(date) FROM \`${DATASET}.financials\`)
       GROUP BY branch ORDER BY total_value_due DESC
     `),
+    query(`
+      SELECT FORMAT_TIMESTAMP('%d/%m/%Y %H:%M', MAX(TIMESTAMP(run_date)), 'America/Recife') as updated_at
+      FROM \`${DATASET}.diary_checks\`
+    `),
   ]);
 
-  const lastUpdate = await query(`SELECT FORMAT_TIMESTAMP("%d/%m/%Y %H:%M", MAX(TIMESTAMP(run_date)), "America/Recife") as updated_at FROM `${DATASET}.diary_checks``); 
-  return Response.json({ diary, teachers, financials, updated_at: lastUpdate[0]?.updated_at || "" });
+  return Response.json({
+    diary,
+    teachers,
+    financials,
+    updated_at: (lastUpdate[0] as any)?.updated_at || "",
+  });
 }
