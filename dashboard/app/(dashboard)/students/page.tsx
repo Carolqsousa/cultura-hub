@@ -162,9 +162,17 @@ export default function StudentsPage() {
       );
     }
 
+    const LEVEL_ORDER: Record<RiskLevel, number> = { critical: 0, attention: 1, ok: 2 };
+
     rows = [...rows].sort((a, b) => {
-      let av: number | string = sortKey === "risk_score" ? a.score : (a as any)[sortKey] ?? "";
-      let bv: number | string = sortKey === "risk_score" ? b.score : (b as any)[sortKey] ?? "";
+      if (sortKey === "risk_score") {
+        // Always sort by level first (Critical→Attention→OK), then by score within level
+        const levelCmp = LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level];
+        if (levelCmp !== 0) return sortAsc ? -levelCmp : levelCmp;
+        return sortAsc ? a.score - b.score : b.score - a.score;
+      }
+      const av: any = (a as any)[sortKey] ?? "";
+      const bv: any = (b as any)[sortKey] ?? "";
       const cmp = av < bv ? -1 : av > bv ? 1 : 0;
       return sortAsc ? cmp : -cmp;
     });
