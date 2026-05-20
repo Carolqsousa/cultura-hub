@@ -1,8 +1,16 @@
 [
-  { "name": "date",       "type": "DATE",    "mode": "REQUIRED" },
-  { "name": "branch",     "type": "STRING",  "mode": "REQUIRED" },
-  { "name": "student_id", "type": "STRING",  "mode": "REQUIRED" },
-  { "name": "class_id",   "type": "STRING",  "mode": "NULLABLE" },
-  { "name": "average",    "type": "FLOAT64", "mode": "NULLABLE" },
-  { "name": "situation",  "type": "STRING",  "mode": "NULLABLE" }
+  {"name": "date",            "type": "DATE",    "mode": "NULLABLE"},
+  {"name": "branch",          "type": "STRING",  "mode": "NULLABLE"},
+  {"name": "student_id",      "type": "STRING",  "mode": "NULLABLE"},
+  {"name": "class_id",        "type": "STRING",  "mode": "NULLABLE"},
+  {"name": "class_name",      "type": "STRING",  "mode": "NULLABLE"},
+  {"name": "phase_name",      "type": "STRING",  "mode": "NULLABLE"},
+  {"name": "grade_format",    "type": "STRING",  "mode": "NULLABLE"},
+  {"name": "pc_average",      "type": "FLOAT",   "mode": "NULLABLE"},
+  {"name": "midterm_average", "type": "FLOAT",   "mode": "NULLABLE"},
+  {"name": "final_average",   "type": "FLOAT",   "mode": "NULLABLE"},
+  {"name": "overall_average", "type": "FLOAT",   "mode": "NULLABLE"},
+  {"name": "approved",        "type": "BOOLEAN", "mode": "NULLABLE"},
+  {"name": "provas_entered",  "type": "STRING",  "mode": "NULLABLE"},
+  {"name": "run_date",        "type": "DATE",    "mode": "NULLABLE"}
 ]
