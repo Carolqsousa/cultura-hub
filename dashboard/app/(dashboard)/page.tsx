@@ -34,6 +34,7 @@ export default function OverviewPage() {
   const [teachers, setTeachers] = useState<DiaryTeacher[]>([]);
   const [financials, setFinancials] = useState<FinancialRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [updatedAt, setUpdatedAt] = useState("");
 
   const [filterProf, setFilterProf] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -48,6 +49,7 @@ export default function OverviewPage() {
         setDiary(d.diary || []);
         setTeachers(d.teachers || []);
         setFinancials(d.financials || []);
+        setUpdatedAt(d.updated_at || "");
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -180,7 +182,7 @@ export default function OverviewPage() {
       {/* Teacher diary with filters + sortable columns */}
       <div className="bg-white rounded-xl border p-5 mb-6">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <h2 className="text-sm font-semibold text-gray-700">Diário por professor</h2>
+          <h2 className="text-sm font-semibold text-gray-700">Diário por professor {updatedAt && <span className="text-xs text-gray-400 font-normal ml-2">· atualizado {updatedAt}</span>}</h2> {updatedAt && <span className="text-xs text-gray-400 font-normal ml-2">atualizado {updatedAt}</span>}
           <div className="flex gap-2 flex-wrap items-center">
             <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
               className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 outline-none">
