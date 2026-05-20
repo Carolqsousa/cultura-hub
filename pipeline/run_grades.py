@@ -48,7 +48,6 @@ def run_branch(branch: str, api_key: str) -> int:
 def main():
     print(f"=== Pipeline Grades | {date.today()} | Semestre {SEMESTER} ===\n")
 
-    ensure_table(TABLE)
 
     total  = 0
     errors = []
