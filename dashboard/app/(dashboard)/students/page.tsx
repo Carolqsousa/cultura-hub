@@ -118,6 +118,7 @@ export default function StudentsPage() {
 
   useEffect(() => {
     setLoading(true);
+    setStudents([]); // ← add this line to clear before fetching
     const params = new URLSearchParams();
     if (branch !== "all") params.set("branch", branch);
     fetch(`/api/students?${params}`)
@@ -252,8 +253,8 @@ export default function StudentsPage() {
               key={val}
               onClick={() => setFilter(val)}
               className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${filter === val
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
+                ? "bg-white text-gray-900 shadow-sm"
+                : "text-gray-500 hover:text-gray-700"
                 }`}
             >
               {label}
