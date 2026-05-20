@@ -19,17 +19,74 @@ interface Student {
   total_value: number;
 }
 
-type RiskFilter = "all" | "grade" | "frequency" | "financial" | "any";
-type SortKey = keyof Student;
+type RiskLevel  = "critical" | "attention" | "ok";
+type RiskFilter = "all" | "critical" | "attention" | "grade" | "frequency" | "financial";
+type SortKey    = keyof Student | "risk_score";
 
-// ── Color helpers ─────────────────────────────────────────────────────────────
+// ── Risk scoring ──────────────────────────────────────────────────────────────
+// Priority: Frequency (most critical) > Grade > Installments
+//
+// Points:
+//   Frequency < 50%  → +3
+//   Frequency 50–70% → +2
+//   Grade < 6        → +2
+//   Grade 6–7        → +1
+//   Installments > 1 → +2
+//   Installments = 1 → +1
+//
+// Level:
+//   🔴 Critical  → score ≥ 4 OR 2+ factors triggered
+//   🟡 Attention → score 1–3 (single factor)
+//   🟢 OK        → score 0
+
+function calcRisk(s: Student): { level: RiskLevel; score: number; factors: number } {
+  let score   = 0;
+  let factors = 0;
+
+  // Frequency
+  if (s.pct_presence !== null) {
+    if (s.pct_presence < 50)       { score += 3; factors++; }
+    else if (s.pct_presence < 70)  { score += 2; factors++; }
+  }
+
+  // Grade (Format A only)
+  if (s.grade_format !== "B" && s.overall_average !== null) {
+    if (s.overall_average < 6)      { score += 2; factors++; }
+    else if (s.overall_average < 7) { score += 1; factors++; }
+  }
+
+  // Installments
+  if (s.open_installments > 1)      { score += 2; factors++; }
+  else if (s.open_installments > 0) { score += 1; factors++; }
+
+  const level: RiskLevel =
+    score >= 4 || factors >= 2 ? "critical" :
+    score >= 1                  ? "attention" :
+    "ok";
+
+  return { level, score, factors };
+}
+
+const RISK_LABEL: Record<RiskLevel, string> = {
+  critical:  "🔴 Critical",
+  attention: "🟡 Attention",
+  ok:        "🟢 OK",
+};
+
+const RISK_CLS: Record<RiskLevel, string> = {
+  critical:  "bg-red-100 text-red-800 font-semibold",
+  attention: "bg-yellow-100 text-yellow-800 font-semibold",
+  ok:        "text-gray-400",
+};
+
+// ── Cell helpers ──────────────────────────────────────────────────────────────
 
 function gradeCell(avg: number | null, format: string | null) {
   if (format === "B") return { label: "N/A", cls: "text-gray-400" };
   if (avg === null)   return { label: "—",   cls: "text-gray-400" };
   const label = avg.toFixed(1);
-  if (avg < 6)  return { label, cls: "bg-red-100 text-red-800 font-semibold rounded px-2 py-0.5" };
-  if (avg < 7)  return { label, cls: "bg-yellow-100 text-yellow-800 font-semibold rounded px-2 py-0.5" };
+  if (avg < 6) return { label, cls: "bg-red-100 text-red-800 font-semibold rounded px-2 py-0.5" };
+  if (avg < 7) return { label, cls: "bg-yellow-100 text-yellow-800 font-semibold rounded px-2 py-0.5" };
   return { label, cls: "text-gray-700" };
 }
 
@@ -42,32 +99,21 @@ function freqCell(pct: number | null) {
 }
 
 function installmentsCell(count: number) {
-  if (count === 0) return { label: "0", cls: "text-gray-400" };
-  if (count === 1) return { label: "1", cls: "bg-yellow-100 text-yellow-800 font-semibold rounded px-2 py-0.5" };
-  return { label: String(count), cls: "bg-red-100 text-red-800 font-semibold rounded px-2 py-0.5" };
-}
-
-function isAtRisk(s: Student, filter: RiskFilter): boolean {
-  const gradeRisk  = s.grade_format !== "B" && s.overall_average !== null && s.overall_average < 7;
-  const freqRisk   = s.pct_presence !== null && s.pct_presence < 70;
-  const finRisk    = s.open_installments > 0;
-  if (filter === "grade")     return gradeRisk;
-  if (filter === "frequency") return freqRisk;
-  if (filter === "financial") return finRisk;
-  if (filter === "any")       return gradeRisk || freqRisk || finRisk;
-  return true;
+  if (count === 0) return { label: "—",          cls: "text-gray-400" };
+  if (count === 1) return { label: "1",           cls: "bg-yellow-100 text-yellow-800 font-semibold rounded px-2 py-0.5" };
+  return             { label: String(count),      cls: "bg-red-100 text-red-800 font-semibold rounded px-2 py-0.5" };
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function StudentsPage() {
-  const [students, setStudents]   = useState<Student[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [branch, setBranch]       = useState("all");
-  const [risk, setRisk]           = useState<RiskFilter>("all");
-  const [search, setSearch]       = useState("");
-  const [sortKey, setSortKey]     = useState<SortKey>("name");
-  const [sortAsc, setSortAsc]     = useState(true);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [branch, setBranch]     = useState("all");
+  const [filter, setFilter]     = useState<RiskFilter>("all");
+  const [search, setSearch]     = useState("");
+  const [sortKey, setSortKey]   = useState<SortKey>("risk_score");
+  const [sortAsc, setSortAsc]   = useState(false); // highest risk first
 
   useEffect(() => {
     setLoading(true);
@@ -83,8 +129,30 @@ export default function StudentsPage() {
     [students]
   );
 
+  // Enrich students with risk level
+  const enriched = useMemo(() =>
+    students.map(s => ({ ...s, ...calcRisk(s) })),
+    [students]
+  );
+
+  // Summary counts
+  const counts = useMemo(() => ({
+    total:     enriched.length,
+    critical:  enriched.filter(s => s.level === "critical").length,
+    attention: enriched.filter(s => s.level === "attention").length,
+    ok:        enriched.filter(s => s.level === "ok").length,
+  }), [enriched]);
+
   const filtered = useMemo(() => {
-    let rows = students.filter(s => isAtRisk(s, risk));
+    let rows = enriched.filter(s => {
+      if (filter === "critical")  return s.level === "critical";
+      if (filter === "attention") return s.level === "attention";
+      if (filter === "grade")     return s.grade_format !== "B" && s.overall_average !== null && s.overall_average < 7;
+      if (filter === "frequency") return s.pct_presence !== null && s.pct_presence < 70;
+      if (filter === "financial") return s.open_installments > 0;
+      return true;
+    });
+
     if (search.trim()) {
       const q = search.toLowerCase();
       rows = rows.filter(s =>
@@ -93,26 +161,20 @@ export default function StudentsPage() {
         s.teacher?.toLowerCase().includes(q)
       );
     }
+
     rows = [...rows].sort((a, b) => {
-      const av = a[sortKey] ?? "";
-      const bv = b[sortKey] ?? "";
+      let av: number | string = sortKey === "risk_score" ? a.score : (a as any)[sortKey] ?? "";
+      let bv: number | string = sortKey === "risk_score" ? b.score : (b as any)[sortKey] ?? "";
       const cmp = av < bv ? -1 : av > bv ? 1 : 0;
       return sortAsc ? cmp : -cmp;
     });
-    return rows;
-  }, [students, risk, search, sortKey, sortAsc]);
 
-  // Summary counts
-  const counts = useMemo(() => ({
-    total:     students.length,
-    grade:     students.filter(s => isAtRisk(s, "grade")).length,
-    frequency: students.filter(s => isAtRisk(s, "frequency")).length,
-    financial: students.filter(s => isAtRisk(s, "financial")).length,
-  }), [students]);
+    return rows;
+  }, [enriched, filter, search, sortKey, sortAsc]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) setSortAsc(a => !a);
-    else { setSortKey(key); setSortAsc(true); }
+    else { setSortKey(key); setSortAsc(key !== "risk_score"); }
   }
 
   function SortTh({ label, k }: { label: string; k: SortKey }) {
@@ -121,7 +183,7 @@ export default function StudentsPage() {
         onClick={() => toggleSort(k)}
         className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide cursor-pointer select-none whitespace-nowrap hover:text-gray-800"
       >
-        {label} {sortKey === k ? (sortAsc ? "↑" : "↓") : ""}
+        {label}{sortKey === k ? (sortAsc ? " ↑" : " ↓") : ""}
       </th>
     );
   }
@@ -139,15 +201,17 @@ export default function StudentsPage() {
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Total Ativos",         value: counts.total,     color: "text-gray-900", onClick: () => setRisk("all") },
-          { label: "⚠️ Nota < 7",          value: counts.grade,     color: "text-yellow-700", onClick: () => setRisk("grade") },
-          { label: "⚠️ Frequência < 70%",  value: counts.frequency, color: "text-yellow-700", onClick: () => setRisk("frequency") },
-          { label: "⚠️ Parc. em Aberto",   value: counts.financial, color: "text-yellow-700", onClick: () => setRisk("financial") },
+          { label: "Total Ativos",   value: counts.total,     color: "text-gray-900",   f: "all"       },
+          { label: "🔴 Critical",    value: counts.critical,  color: "text-red-700",    f: "critical"  },
+          { label: "🟡 Attention",   value: counts.attention, color: "text-yellow-700", f: "attention" },
+          { label: "🟢 OK",          value: counts.ok,        color: "text-green-700",  f: "all"       },
         ].map(c => (
           <button
             key={c.label}
-            onClick={c.onClick}
-            className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:border-blue-400 transition-colors"
+            onClick={() => setFilter(c.f as RiskFilter)}
+            className={`bg-white rounded-xl border p-4 text-left transition-colors hover:border-blue-400 ${
+              filter === c.f && c.f !== "all" ? "border-blue-400 ring-1 ring-blue-400" : "border-gray-200"
+            }`}
           >
             <p className="text-xs text-gray-500 font-medium">{c.label}</p>
             <p className={`text-3xl font-bold mt-1 ${c.color}`}>{c.value}</p>
@@ -157,7 +221,6 @@ export default function StudentsPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
-        {/* Branch */}
         <select
           value={branch}
           onChange={e => setBranch(e.target.value)}
@@ -168,20 +231,20 @@ export default function StudentsPage() {
           ))}
         </select>
 
-        {/* Risk filter */}
         <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
           {([
             ["all",       "Todos"],
-            ["any",       "Em risco"],
+            ["critical",  "🔴 Critical"],
+            ["attention", "🟡 Attention"],
             ["grade",     "Nota"],
             ["frequency", "Frequência"],
             ["financial", "Financeiro"],
           ] as [RiskFilter, string][]).map(([val, label]) => (
             <button
               key={val}
-              onClick={() => setRisk(val)}
+              onClick={() => setFilter(val)}
               className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
-                risk === val
+                filter === val
                   ? "bg-white text-gray-900 shadow-sm"
                   : "text-gray-500 hover:text-gray-700"
               }`}
@@ -191,7 +254,6 @@ export default function StudentsPage() {
           ))}
         </div>
 
-        {/* Search */}
         <input
           type="text"
           placeholder="Buscar aluno, turma ou professor..."
@@ -216,14 +278,15 @@ export default function StudentsPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <SortTh label="Aluno"       k="name" />
-                  <SortTh label="Unidade"     k="branch" />
-                  <SortTh label="Turma"       k="class_name" />
-                  <SortTh label="Professor"   k="teacher" />
-                  <SortTh label="Frequência"  k="pct_presence" />
-                  <SortTh label="Des. Escolar" k="overall_average" />
-                  <SortTh label="Parc. Aberto" k="open_installments" />
-                  <SortTh label="Valor (R$)"  k="total_value" />
+                  <SortTh label="Risco"         k="risk_score" />
+                  <SortTh label="Aluno"          k="name" />
+                  <SortTh label="Unidade"        k="branch" />
+                  <SortTh label="Turma"          k="class_name" />
+                  <SortTh label="Professor"      k="teacher" />
+                  <SortTh label="Frequência"     k="pct_presence" />
+                  <SortTh label="Des. Escolar"   k="overall_average" />
+                  <SortTh label="Parc. Aberto"   k="open_installments" />
+                  <SortTh label="Valor (R$)"     k="total_value" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -233,23 +296,26 @@ export default function StudentsPage() {
                   const instal = installmentsCell(s.open_installments);
                   return (
                     <tr key={`${s.student_id}-${s.class_name}`} className="hover:bg-gray-50">
-                      <td className="px-3 py-2.5 font-medium text-gray-900">{s.name}</td>
-                      <td className="px-3 py-2.5 text-gray-500">{s.branch}</td>
-                      <td className="px-3 py-2.5 text-gray-600">{s.class_name}</td>
-                      <td className="px-3 py-2.5 text-gray-500">{s.teacher || "—"}</td>
+                      <td className="px-3 py-2.5">
+                        <span className={`text-xs rounded px-2 py-0.5 ${RISK_CLS[s.level]}`}>
+                          {RISK_LABEL[s.level]}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 font-medium text-gray-900 whitespace-nowrap">{s.name}</td>
+                      <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{s.branch}</td>
+                      <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{s.class_name}</td>
+                      <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{s.teacher || "—"}</td>
                       <td className="px-3 py-2.5">
                         <span className={freq.cls}>{freq.label}</span>
                         {s.pct_presence !== null && (
-                          <span className="text-xs text-gray-400 ml-1">
-                            ({s.presences}/{s.total_lessons})
-                          </span>
+                          <span className="text-xs text-gray-400 ml-1">({s.presences}/{s.total_lessons})</span>
                         )}
                       </td>
                       <td className="px-3 py-2.5">
                         <span className={grade.cls}>{grade.label}</span>
                         {s.provas_entered && s.grade_format !== "B" && (
                           <span className="text-xs text-gray-400 ml-1">
-                            {s.provas_entered.split(",").length}/3 provas
+                            {s.provas_entered.split(",").length}/3
                           </span>
                         )}
                       </td>
