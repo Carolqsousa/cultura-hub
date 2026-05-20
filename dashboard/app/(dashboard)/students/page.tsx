@@ -298,12 +298,12 @@ export default function StudentsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filtered.map(s => {
+                {filtered.map((s, idx) => {
                   const grade = gradeCell(s.overall_average, s.grade_format);
                   const freq = freqCell(s.pct_presence);
                   const instal = installmentsCell(s.open_installments);
                   return (
-                    <tr key={`${s.student_id}-${s.class_name}`} className="hover:bg-gray-50">
+                    <tr key={`${s.student_id}-${s.class_name}-${idx}`} className="hover:bg-gray-50">
                       <td className="px-3 py-2.5">
                         <span className={`text-xs rounded px-2 py-0.5 ${RISK_CLS[s.level]}`}>
                           {RISK_LABEL[s.level]}
