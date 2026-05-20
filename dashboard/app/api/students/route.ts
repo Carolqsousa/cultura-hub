@@ -12,7 +12,7 @@ export async function GET(request: Request) {
 
   const rows = await query(`
     WITH latest_students AS (
-      SELECT student_id, name, branch, class_id, teacher
+      SELECT student_id, name, branch, teacher
       FROM \`${DATASET}.students\`
       WHERE date = (SELECT MAX(date) FROM \`${DATASET}.students\`)
     ),
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       WHERE date = (SELECT MAX(date) FROM \`${DATASET}.attendance\`)
     ),
     latest_grades AS (
-      SELECT student_id, class_id, overall_average, approved, provas_entered, grade_format
+      SELECT student_id, class_id, class_name, overall_average, grade_format, provas_entered
       FROM \`${DATASET}.grades\`
       WHERE date = (SELECT MAX(date) FROM \`${DATASET}.grades\`)
     ),
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
       s.student_id,
       s.name,
       s.branch,
-      COALESCE(a.class_name, s.class_id) as class_name,
+      COALESCE(a.class_name, g.class_name) as class_name,
       s.teacher,
       a.pct_presence,
       a.presences,
@@ -52,12 +52,9 @@ export async function GET(request: Request) {
       COALESCE(f.open_installments, 0) as open_installments,
       COALESCE(f.total_value, 0.0) as total_value
     FROM latest_students s
-    LEFT JOIN latest_attendance a
-      ON s.student_id = a.student_id AND s.class_id = a.class_id
-    LEFT JOIN latest_grades g
-      ON s.student_id = g.student_id AND s.class_id = g.class_id
-    LEFT JOIN latest_financials f
-      ON s.student_id = f.student_id
+    LEFT JOIN latest_attendance a ON s.student_id = a.student_id
+    LEFT JOIN latest_grades g ON s.student_id = g.student_id
+    LEFT JOIN latest_financials f ON s.student_id = f.student_id
     WHERE 1=1 ${branchFilter}
     ORDER BY s.branch, s.name
   `);
