@@ -28,7 +28,7 @@ export async function GET() {
       ORDER BY pending DESC, professor
     `),
     query(`
-      SELECT FORMAT_TIMESTAMP('%d/%m/%Y %H:%M', MAX(TIMESTAMP(run_date)), 'America/Recife') as updated_at
+      SELECT FORMAT_TIMESTAMP('%d/%m/%Y %H:%M', MAX(run_timestamp), 'America/Recife') as updated_at
       FROM \`${DATASET}.diary_checks\`
     `),
   ]);

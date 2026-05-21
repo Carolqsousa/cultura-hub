@@ -171,6 +171,7 @@ def fetch(client):
             "pct_complete":         pct,
             "last_completed_date":  last_done,
             "run_date":             today.isoformat(),
+            "run_timestamp":        datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
         })
 
     print(f"[diary_checks] Done — {len(rows)} turmas, "
