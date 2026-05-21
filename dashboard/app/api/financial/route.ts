@@ -21,7 +21,6 @@ export async function GET(request: Request) {
         FORMAT_DATE('%Y-%m-%d', MAX(maturity)) as newest_maturity
       FROM \`${DATASET}.financials\`
       WHERE date = (SELECT MAX(date) FROM \`${DATASET}.financials\`)
-        AND EXTRACT(YEAR FROM maturity) = 2026
         AND maturity BETWEEN '${startDate}' AND '${endDate}'
       GROUP BY student_id, branch
     ),
