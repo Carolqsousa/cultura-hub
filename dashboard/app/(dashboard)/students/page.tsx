@@ -309,7 +309,22 @@ export default function StudentsPage() {
                           {RISK_LABEL[s.level]}
                         </span>
                       </td>
-                      <td className="px-3 py-2.5 font-medium text-gray-900 whitespace-nowrap">{s.name}</td>
+                      <td className="px-3 py-2.5 font-medium text-gray-900 whitespace-nowrap">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(s.name);
+                            const el = document.getElementById(`copy-${s.student_id}-${idx}`);
+                            if (el) { el.textContent = "Copiado!"; setTimeout(() => { el.textContent = s.name; }, 1500); }
+                          }}
+                          className="group flex items-center gap-1.5 hover:text-blue-600 transition-colors text-left"
+                          title="Clique para copiar o nome"
+                        >
+                          <span id={`copy-${s.student_id}-${idx}`}>{s.name}</span>
+                          <svg className="w-3 h-3 opacity-0 group-hover:opacity-40 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        </button>
+                      </td>
                       <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{s.branch}</td>
                       <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{s.class_name}</td>
                       <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{s.teacher || "—"}</td>
