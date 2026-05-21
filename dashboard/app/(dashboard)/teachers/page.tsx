@@ -46,10 +46,13 @@ export default function TeachersPage() {
       .catch(() => setLoading(false));
   }, []);
 
-  const totalPending   = diary.reduce((s, r) => s + Number(r.pending), 0);
-  const totalLessons   = diary.reduce((s, r) => s + Number(r.total_lessons), 0);
-  const totalCompleted = diary.reduce((s, r) => s + Number(r.completed), 0);
-  const overallPct     = totalLessons > 0 ? Math.round(totalCompleted / totalLessons * 100) : 0;
+  const { totalPending, overallPct } = useMemo(() => {
+    const totalPending   = diary.reduce((s, r) => s + Number(r.pending), 0);
+    const totalLessons   = diary.reduce((s, r) => s + Number(r.total_lessons), 0);
+    const totalCompleted = diary.reduce((s, r) => s + Number(r.completed), 0);
+    const overallPct     = totalLessons > 0 ? Math.round(totalCompleted / totalLessons * 100) : 0;
+    return { totalPending, overallPct };
+  }, [diary]);
 
   const professors = useMemo(() => ["all", ...Array.from(new Set(teachers.map(t => t.professor))).sort()], [teachers]);
   const branches   = useMemo(() => ["all", ...Array.from(new Set(teachers.map(t => t.branch))).sort()], [teachers]);
