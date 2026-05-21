@@ -17,8 +17,8 @@ export async function GET(request: Request) {
         branch,
         COUNT(*)                              as open_installments,
         ROUND(SUM(value), 2)                  as total_value,
-        MIN(maturity)                         as oldest_maturity,
-        MAX(maturity)                         as newest_maturity
+        FORMAT_DATE('%Y-%m-%d', MIN(maturity)) as oldest_maturity,
+        FORMAT_DATE('%Y-%m-%d', MAX(maturity)) as newest_maturity
       FROM \`${DATASET}.financials\`
       WHERE date = (SELECT MAX(date) FROM \`${DATASET}.financials\`)
         AND EXTRACT(YEAR FROM maturity) = 2026
