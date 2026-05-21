@@ -22,7 +22,7 @@ export default function OverviewPage() {
         const diary = d.diary || [];
         const totalLessons   = diary.reduce((s: number, r: any) => s + Number(r.total_lessons), 0);
         const totalCompleted = diary.reduce((s: number, r: any) => s + Number(r.completed), 0);
-        setOverallPct(totalLessons > 0 ? Math.round(totalCompleted / totalLessons * 100) : 0);
+        setOverallPct(totalLessons > 0 ? Math.floor(totalCompleted / totalLessons * 100) : 0);
         setLoading(false);
       })
       .catch(() => setLoading(false));
