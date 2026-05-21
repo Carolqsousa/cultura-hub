@@ -210,7 +210,7 @@ export default function FinancialPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Financeiro</h1>
-          <p className="text-sm text-gray-500 mt-1">Parcelas em aberto — 2026</p>
+          <p className="text-sm text-gray-500 mt-1">Parcelas em aberto</p>
         </div>
         <button
           onClick={handlePrint}
