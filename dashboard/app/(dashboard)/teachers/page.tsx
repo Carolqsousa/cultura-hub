@@ -35,7 +35,7 @@ export default function TeachersPage() {
   const [sortAsc, setSortAsc]           = useState(false);
 
   useEffect(() => {
-    fetch("/api/teachers")
+    fetch("/api/teachers", { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
         setDiary(d.diary || []);
