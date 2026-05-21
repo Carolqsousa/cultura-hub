@@ -50,7 +50,7 @@ export default function TeachersPage() {
     const totalPending   = diary.reduce((s, r) => s + Number(r.pending), 0);
     const totalLessons   = diary.reduce((s, r) => s + Number(r.total_lessons), 0);
     const totalCompleted = diary.reduce((s, r) => s + Number(r.completed), 0);
-    const overallPct     = totalLessons > 0 ? Math.round(totalCompleted / totalLessons * 100) : 0;
+    const overallPct     = totalLessons > 0 ? Math.floor(totalCompleted / totalLessons * 100) : 0;
     return { totalPending, overallPct };
   }, [diary]);
 
