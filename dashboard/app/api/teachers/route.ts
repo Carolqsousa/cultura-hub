@@ -1,0 +1,41 @@
+import { query, DATASET } from "@/lib/bigquery";
+
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  const [diary, teachers, lastUpdate] = await Promise.all([
+    query(`
+      SELECT branch,
+        SUM(total_lessons) as total_lessons,
+        SUM(completed) as completed,
+        SUM(pending) as pending,
+        ROUND(SUM(completed) / NULLIF(SUM(total_lessons), 0) * 100, 1) as pct_complete
+      FROM \`${DATASET}.diary_checks\`
+      WHERE date = (SELECT MAX(date) FROM \`${DATASET}.diary_checks\`)
+      GROUP BY branch ORDER BY branch
+    `),
+    query(`
+      SELECT professor, branch,
+        COUNT(*) as classes,
+        SUM(total_lessons) as total_lessons,
+        SUM(completed) as completed,
+        SUM(pending) as pending,
+        ROUND(SUM(completed) / NULLIF(SUM(total_lessons), 0) * 100, 1) as pct_complete
+      FROM \`${DATASET}.diary_checks\`
+      WHERE date = (SELECT MAX(date) FROM \`${DATASET}.diary_checks\`)
+      AND professor IS NOT NULL AND professor != ''
+      GROUP BY professor, branch
+      ORDER BY pending DESC, professor
+    `),
+    query(`
+      SELECT FORMAT_TIMESTAMP('%d/%m/%Y %H:%M', MAX(TIMESTAMP(run_date)), 'America/Recife') as updated_at
+      FROM \`${DATASET}.diary_checks\`
+    `),
+  ]);
+
+  return Response.json({
+    diary,
+    teachers,
+    updated_at: (lastUpdate[0] as any)?.updated_at || "",
+  });
+}
