@@ -43,7 +43,23 @@ const STATUS_COLORS: Record<string, string> = {
   "Pago":             "bg-green-100 text-green-700",
 };
 
-type SortKey = "name" | "branch" | "open_installments" | "total_value" | "oldest_maturity" | "status";
+
+// ── Interest calculation ──────────────────────────────────────────────────────
+function calcInterest(value: number, oldestMaturity: string): { multa: number; juros: number; total: number } {
+  if (!oldestMaturity) return { multa: 0, juros: 0, total: value };
+  const today     = new Date();
+  const maturity  = new Date(oldestMaturity);
+  const daysLate  = Math.max(0, Math.floor((today.getTime() - maturity.getTime()) / (1000 * 60 * 60 * 24)));
+  const multa     = daysLate > 0 ? value * 0.02 : 0;
+  const juros     = daysLate > 0 ? value * (1 / 100) * (daysLate / 30) : 0;
+  return {
+    multa:  Math.round(multa  * 100) / 100,
+    juros:  Math.round(juros  * 100) / 100,
+    total:  Math.round((value + multa + juros) * 100) / 100,
+  };
+}
+
+type SortKey = "name" | "branch" | "open_installments" | "total_value" | "oldest_maturity" | "status" | "total_com_juros";
 
 export default function FinancialPage() {
   const [students, setStudents]   = useState<FinancialStudent[]>([]);
@@ -93,6 +109,10 @@ export default function FinancialPage() {
 
   // Summary KPIs
   const totalValue       = useMemo(() => students.reduce((s, r) => s + Number(r.total_value), 0), [students]);
+  const totalComJuros    = useMemo(() => students.reduce((s, r) => {
+    const { total } = calcInterest(Number(r.total_value), r.oldest_maturity);
+    return s + total;
+  }, 0), [students]);
   const totalInstallments = useMemo(() => students.reduce((s, r) => s + Number(r.open_installments), 0), [students]);
   const paidCount        = useMemo(() => Object.values(tracking).filter(t => t.status === "Pago").length, [tracking]);
 
@@ -273,7 +293,10 @@ export default function FinancialPage() {
                   <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Telefone</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Email</th>
                   <SortTh label="Parcelas"        k="open_installments" />
-                  <SortTh label="Total (R$)"      k="total_value" />
+                  <SortTh label="Total original"  k="total_value" />
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Multa (2%)</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Juros (1%)</th>
+                  <SortTh label="Total c/ juros" k="total_com_juros" />
                   <SortTh label="Venc. mais antigo" k="oldest_maturity" />
                   <SortTh label="Status"          k="status" />
                   <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide no-print">Observações</th>
@@ -282,6 +305,7 @@ export default function FinancialPage() {
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((s, idx) => {
                   const key     = `${s.student_id}-${s.branch}`;
+                    const interest = calcInterest(Number(s.total_value), s.oldest_maturity);
                   const tracked = s.tracking;
                   return (
                     <tr key={`${key}-${idx}`} className="hover:bg-gray-50">
@@ -291,8 +315,17 @@ export default function FinancialPage() {
                       <td className="px-3 py-2.5 text-gray-500">{s.responsible_phone || <span className="text-gray-300">—</span>}</td>
                       <td className="px-3 py-2.5 text-gray-500">{s.responsible_email || <span className="text-gray-300">—</span>}</td>
                       <td className="px-3 py-2.5 text-center text-orange-600 font-medium">{s.open_installments}</td>
-                      <td className="px-3 py-2.5 font-medium text-red-600">
+                      <td className="px-3 py-2.5 font-medium text-gray-700">
                         R$ {Number(s.total_value).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-3 py-2.5 text-orange-600">
+                        R$ {interest.multa.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-3 py-2.5 text-orange-600">
+                        R$ {interest.juros.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-3 py-2.5 font-bold text-red-600">
+                        R$ {interest.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                       </td>
                       <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">
                         {s.oldest_maturity ? new Date(s.oldest_maturity).toLocaleDateString("pt-BR") : "—"}
