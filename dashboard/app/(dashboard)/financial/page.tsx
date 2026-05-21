@@ -30,7 +30,7 @@ const STATUS_OPTIONS = [
   "Em negociação",
   "Aguardando recibo",
   "Recibo recebido",
-  "Aguardando BASHA",
+  "Aguardando baixa",
   "Pago",
 ];
 
@@ -39,7 +39,7 @@ const STATUS_COLORS: Record<string, string> = {
   "Em negociação":    "bg-blue-100 text-blue-700",
   "Aguardando recibo":"bg-yellow-100 text-yellow-700",
   "Recibo recebido":  "bg-purple-100 text-purple-700",
-  "Aguardando BASHA": "bg-orange-100 text-orange-700",
+  "Aguardando baixa": "bg-orange-100 text-orange-700",
   "Pago":             "bg-green-100 text-green-700",
 };
 
