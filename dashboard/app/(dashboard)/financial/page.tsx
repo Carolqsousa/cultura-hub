@@ -102,7 +102,7 @@ export default function FinancialPage() {
     supabase.from("financial_tracking").select("*").then(({ data }) => {
       if (!data) return;
       const map: Record<string, TrackingRecord> = {};
-      data.forEach(r => { map[`${r.student_id}-${r.branch}`] = r; });
+      data.forEach(r => { map[`${r.student_id}-${r.branch}-${r.oldest_maturity || ""}`] = r; });
       setTracking(map);
     });
   }, []);
@@ -155,22 +155,23 @@ export default function FinancialPage() {
     );
   }
 
-  async function updateStatus(studentId: string, branch: string, status: string) {
+  async function updateStatus(studentId: string, branch: string, status: string, oldestMaturity: string) {
     console.log('updateStatus called', studentId, branch, status);
     const key = `${studentId}-${branch}`;
     setSaving(key);
     const record = {
       student_id: studentId, branch, status,
       notes: tracking[key]?.notes || "",
+      oldest_maturity: oldestMaturity,
       updated_at: new Date().toISOString(),
     };
-    const { data, error } = await supabase.from("financial_tracking").upsert(record, { onConflict: "student_id,branch" });
+    const { data, error } = await supabase.from("financial_tracking").upsert(record, { onConflict: "student_id,branch,oldest_maturity" });
     console.log('upsert result:', data, 'error:', error);
     setTracking(prev => ({ ...prev, [key]: { ...prev[key], ...record } }));
     setSaving(null);
   }
 
-  function updateNotes(studentId: string, branch: string, notes: string) {
+  function updateNotes(studentId: string, branch: string, notes: string, oldestMaturity: string) {
     const key = `${studentId}-${branch}`;
     setTracking(prev => ({
       ...prev,
@@ -181,8 +182,9 @@ export default function FinancialPage() {
       await supabase.from("financial_tracking").upsert({
         student_id: studentId, branch,
         status: tracking[key]?.status || "Sem contato",
+        oldest_maturity: oldestMaturity,
         notes, updated_at: new Date().toISOString(),
-      }, { onConflict: "student_id,branch" });
+      }, { onConflict: "student_id,branch,oldest_maturity" });
     }, 800);
   }
 
@@ -262,7 +264,7 @@ export default function FinancialPage() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((s, idx) => {
-                  const key      = `${s.student_id}-${s.branch}`;
+                  const key      = `${s.student_id}-${s.branch}-${s.oldest_maturity || ''}`;
                   const interest = calcInterest(Number(s.total_value), s.oldest_maturity);
                   const tracked  = s.tracking;
                   const isExpanded = expanded.has(key);
@@ -289,7 +291,7 @@ export default function FinancialPage() {
                         </td>
                         <td className="px-3 py-2.5 no-print">
                           <select value={tracked.status || "Sem contato"}
-                            onChange={e => updateStatus(s.student_id, s.branch, e.target.value)}
+                            onChange={e => updateStatus(s.student_id, s.branch, e.target.value, s.oldest_maturity || "")}
                             disabled={saving === key}
                             className={`text-xs font-medium rounded-full px-2 py-1 border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 ${STATUS_COLORS[tracked.status || "Sem contato"]}`}>
                             {STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -298,7 +300,7 @@ export default function FinancialPage() {
                         <td className="px-3 py-2.5 no-print">
                           <input type="text" placeholder="Adicionar nota..."
                             value={tracked.notes || ""}
-                            onChange={e => updateNotes(s.student_id, s.branch, e.target.value)}
+                            onChange={e => updateNotes(s.student_id, s.branch, e.target.value, s.oldest_maturity || "")}
                             className="text-xs border border-gray-200 rounded px-2 py-1 w-48 focus:outline-none focus:ring-1 focus:ring-blue-400" />
                         </td>
                       </tr>
