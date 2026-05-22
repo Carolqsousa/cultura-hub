@@ -13,7 +13,7 @@ interface FinancialStudent {
   newest_maturity: string;
   // from contacts (future)
   responsible_name?: string;
-  responsible_phone?: string;
+  phone?: string;
   responsible_email?: string;
 }
 
@@ -312,7 +312,7 @@ export default function FinancialPage() {
                       <td className="px-3 py-2.5 font-medium text-gray-900 whitespace-nowrap">{s.name || "—"}</td>
                       <td className="px-3 py-2.5 text-gray-500">{s.branch}</td>
                       <td className="px-3 py-2.5 text-gray-500">{s.responsible_name || <span className="text-gray-300">—</span>}</td>
-                      <td className="px-3 py-2.5 text-gray-500">{s.responsible_phone || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-3 py-2.5 text-gray-500">{s.phone || <span className="text-gray-300">—</span>}</td>
                       <td className="px-3 py-2.5 text-gray-500">{s.responsible_email || <span className="text-gray-300">—</span>}</td>
                       <td className="px-3 py-2.5 text-center text-orange-600 font-medium">{s.open_installments}</td>
                       <td className="px-3 py-2.5 font-medium text-gray-700">
