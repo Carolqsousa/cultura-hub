@@ -10,7 +10,11 @@ export default async function DashboardLayout({
   if (!user) redirect("/login");
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen flex-col">
+      <header className="h-14 border-b flex items-center justify-end px-6 shrink-0">
+        <img src="/logo.png" alt="Cultura Inglesa" className="h-8 object-contain" />
+      </header>
+      <div className="flex flex-1 overflow-hidden">
       <nav className="w-56 shrink-0 border-r p-4 flex flex-col gap-1">
         <NavLink href="/">Overview</NavLink>
         <NavLink href="/students">Students</NavLink>
@@ -21,6 +25,7 @@ export default async function DashboardLayout({
         <NavLink href="/quality">Quality</NavLink>
       </nav>
       <div className="flex-1 overflow-auto">{children}</div>
+      </div>
     </div>
   );
 }
