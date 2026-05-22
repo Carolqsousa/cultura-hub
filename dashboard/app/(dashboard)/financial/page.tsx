@@ -9,6 +9,7 @@ interface FinancialStudent {
   name: string;
   open_installments: number;
   total_value: number;
+  installments?: { parcel_number: number; maturity: string; value: number; }[];
   oldest_maturity: string;
   newest_maturity: string;
   // from contacts (future)
@@ -74,6 +75,15 @@ export default function FinancialPage() {
   const [sortKey, setSortKey]     = useState<SortKey>("total_value");
   const [sortAsc, setSortAsc]     = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  function toggleExpand(key: string) {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
 
   // Notes debounce
   const notesTimer = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -307,7 +317,12 @@ export default function FinancialPage() {
                   const tracked = s.tracking;
                   return (
                     <tr key={`${key}-${idx}`} className="hover:bg-gray-50">
-                      <td className="px-3 py-2.5 font-medium text-gray-900 whitespace-nowrap">{s.name || "—"}</td>
+                      <td className="px-3 py-2.5 font-medium text-gray-900 whitespace-nowrap">
+                        <button onClick={() => toggleExpand(key)} className="flex items-center gap-1.5 hover:text-blue-600 transition-colors text-left">
+                          <span>{expanded.has(key) ? "▼" : "▶"}</span>
+                          <span>{s.name || "—"}</span>
+                        </button>
+                      </td>
                       <td className="px-3 py-2.5 text-gray-500">{s.branch}</td>
                       <td className="px-3 py-2.5 text-gray-500">{s.responsible_name || <span className="text-gray-300">—</span>}</td>
                       <td className="px-3 py-2.5 text-gray-500">{s.phone || <span className="text-gray-300">—</span>}</td>
@@ -348,6 +363,42 @@ export default function FinancialPage() {
                         />
                       </td>
                     </tr>
+                    {expanded.has(key) && s.installments && (
+                      <tr key={`${key}-expanded`} className="bg-blue-50">
+                        <td colSpan={10} className="px-6 py-3">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-gray-500 border-b border-blue-100">
+                                <th className="pb-1 text-left">Parcela</th>
+                                <th className="pb-1 text-left">Vencimento</th>
+                                <th className="pb-1 text-left">Dias em atraso</th>
+                                <th className="pb-1 text-left">Valor original</th>
+                                <th className="pb-1 text-left">Multa (2%)</th>
+                                <th className="pb-1 text-left">Juros (1%)</th>
+                                <th className="pb-1 text-left font-bold">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {s.installments.map((inst, ii) => {
+                                const iInterest = calcInterest(inst.value, inst.maturity);
+                                const daysLate  = Math.max(0, Math.floor((new Date().getTime() - new Date(inst.maturity).getTime()) / (1000*60*60*24)));
+                                return (
+                                  <tr key={ii} className="border-b border-blue-100 last:border-0">
+                                    <td className="py-1">#{inst.parcel_number}</td>
+                                    <td className="py-1">{new Date(inst.maturity).toLocaleDateString("pt-BR")}</td>
+                                    <td className="py-1 text-red-600">{daysLate} dias</td>
+                                    <td className="py-1">R$ {inst.value.toLocaleString("pt-BR", {minimumFractionDigits:2})}</td>
+                                    <td className="py-1 text-orange-600">R$ {iInterest.multa.toLocaleString("pt-BR", {minimumFractionDigits:2})}</td>
+                                    <td className="py-1 text-orange-600">R$ {iInterest.juros.toLocaleString("pt-BR", {minimumFractionDigits:2})}</td>
+                                    <td className="py-1 font-bold text-red-700">R$ {iInterest.total.toLocaleString("pt-BR", {minimumFractionDigits:2})}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
                   );
                 })}
               </tbody>

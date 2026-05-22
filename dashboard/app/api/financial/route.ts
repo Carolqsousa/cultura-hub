@@ -15,10 +15,15 @@ export async function GET(request: Request) {
       SELECT
         student_id,
         branch,
-        COUNT(*)                              as open_installments,
-        ROUND(SUM(value), 2)                  as total_value,
+        COUNT(*)                               as open_installments,
+        ROUND(SUM(value), 2)                   as total_value,
         FORMAT_DATE('%Y-%m-%d', MIN(maturity)) as oldest_maturity,
-        FORMAT_DATE('%Y-%m-%d', MAX(maturity)) as newest_maturity
+        FORMAT_DATE('%Y-%m-%d', MAX(maturity)) as newest_maturity,
+        ARRAY_AGG(STRUCT(
+          parcel_number,
+          FORMAT_DATE('%Y-%m-%d', maturity) as maturity,
+          ROUND(value, 2) as value
+        ) ORDER BY maturity) as installments
       FROM \`${DATASET}.financials\`
       WHERE date = (SELECT MAX(date) FROM \`${DATASET}.financials\`)
         AND maturity BETWEEN '${startDate}' AND '${endDate}'
@@ -43,7 +48,8 @@ export async function GET(request: Request) {
       f.open_installments,
       f.total_value,
       f.oldest_maturity,
-      f.newest_maturity
+      f.newest_maturity,
+      f.installments
     FROM latest_financials f
     LEFT JOIN latest_students s ON f.student_id = s.student_id
     LEFT JOIN latest_contacts c ON UPPER(REGEXP_REPLACE(NORMALIZE(s.name, NFD), r'\\p{Mn}', '')) = c.student_name_normalized
