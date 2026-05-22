@@ -14,7 +14,6 @@ interface FinancialStudent {
   // from contacts (future)
   responsible_name?: string;
   phone?: string;
-  responsible_email?: string;
 }
 
 interface TrackingRecord {
@@ -291,7 +290,6 @@ export default function FinancialPage() {
                   <SortTh label="Unidade"         k="branch" />
                   <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Responsável</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Telefone</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Email</th>
                   <SortTh label="Parcelas"        k="open_installments" />
                   <SortTh label="Total original"  k="total_value" />
                   <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Multa (2%)</th>
@@ -313,7 +311,6 @@ export default function FinancialPage() {
                       <td className="px-3 py-2.5 text-gray-500">{s.branch}</td>
                       <td className="px-3 py-2.5 text-gray-500">{s.responsible_name || <span className="text-gray-300">—</span>}</td>
                       <td className="px-3 py-2.5 text-gray-500">{s.phone || <span className="text-gray-300">—</span>}</td>
-                      <td className="px-3 py-2.5 text-gray-500">{s.responsible_email || <span className="text-gray-300">—</span>}</td>
                       <td className="px-3 py-2.5 text-center text-orange-600 font-medium">{s.open_installments}</td>
                       <td className="px-3 py-2.5 font-medium text-gray-700">
                         R$ {Number(s.total_value).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
