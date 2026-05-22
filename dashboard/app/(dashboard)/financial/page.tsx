@@ -399,6 +399,7 @@ export default function FinancialPage() {
                         </td>
                       </tr>
                     )}
+                    </>
                   );
                 })}
               </tbody>
