@@ -288,7 +288,6 @@ export default function FinancialPage() {
                             {STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                           </select>
                         </td>
-                        <td className="px-3 py-2.5 print-only text-xs">{tracked.status || "Sem contato"}</td>
                         <td className="px-3 py-2.5 no-print">
                           <input type="text" placeholder="Adicionar nota..."
                             value={tracked.notes || ""}
