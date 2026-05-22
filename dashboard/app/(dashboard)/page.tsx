@@ -33,14 +33,14 @@ export default function OverviewPage() {
 
   if (loading) return (
     <main className="p-6">
-      <h1 className="text-2xl font-semibold mb-2">Cultura Hub</h1>
+      <h1 className="text-2xl font-semibold mb-2">Dashboard</h1>
       <p className="text-sm text-gray-400 mt-4">Carregando dados...</p>
     </main>
   );
 
   return (
     <main className="p-6">
-      <h1 className="text-2xl font-semibold mb-2">Cultura Hub</h1>
+      <h1 className="text-2xl font-semibold mb-2">Dashboard</h1>
       <p className="text-sm text-gray-500 mb-8">Visão geral — todas as unidades</p>
 
       {/* KPI cards */}
