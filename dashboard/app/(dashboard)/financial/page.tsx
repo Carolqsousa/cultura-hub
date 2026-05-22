@@ -235,7 +235,7 @@ export default function FinancialPage() {
         ) : filtered.length === 0 ? (
           <div className="p-12 text-center text-gray-400">Nenhum aluno encontrado</div>
         ) : (
-          <div className="overflow-x-auto overflow-y-auto max-h-[70vh]">
+          <div className="overflow-auto max-h-[70vh]">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                 <tr>
