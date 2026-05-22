@@ -12,7 +12,7 @@ export default async function DashboardLayout({
   return (
     <div className="flex min-h-screen flex-col">
       <header className="h-14 border-b flex items-center justify-between px-6 shrink-0">
-<span className="text-sm font-semibold text-gray-700">Cultura Hub</span>
+<span className="text-xl font-bold text-gray-900">Cultura Hub</span>
         <img src="/logo.png" alt="Cultura Inglesa" className="h-8 object-contain" />
       </header>
       <div className="flex flex-1 overflow-hidden">
