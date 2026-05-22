@@ -1,0 +1,25 @@
+name: Upload Contacts (one-time)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pandas google-cloud-bigquery pyarrow
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
+      - name: Upload contacts
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          python3 upload_contacts.py contacts_setubal.csv
+          python3 upload_contacts.py contacts_young.csv
+          python3 upload_contacts.py contacts_boa_viagem.csv
+          python3 upload_contacts.py contacts_natal.csv
