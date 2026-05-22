@@ -229,13 +229,13 @@ export default function FinancialPage() {
         <span className="text-sm text-gray-400 ml-auto">{filtered.length} aluno{filtered.length !== 1 ? "s" : ""}</span>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200">
         {loading ? (
           <div className="p-12 text-center text-gray-400">Carregando...</div>
         ) : filtered.length === 0 ? (
           <div className="p-12 text-center text-gray-400">Nenhum aluno encontrado</div>
         ) : (
-          <div className="overflow-auto max-h-[70vh]">
+          <div style={{overflowX: "auto", overflowY: "auto", maxHeight: "70vh"}}>
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                 <tr>
