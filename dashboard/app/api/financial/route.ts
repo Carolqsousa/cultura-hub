@@ -24,6 +24,10 @@ export async function GET(request: Request) {
         AND maturity BETWEEN '${startDate}' AND '${endDate}'
       GROUP BY student_id, branch
     ),
+    latest_contacts AS (
+      SELECT student_name_normalized, responsible_name, phone
+      FROM \`${DATASET}.contacts\`
+    ),
     latest_students AS (
       SELECT student_id, name
       FROM \`${DATASET}.students\`
@@ -34,12 +38,15 @@ export async function GET(request: Request) {
       f.student_id,
       f.branch,
       s.name,
+      c.responsible_name,
+      c.phone,
       f.open_installments,
       f.total_value,
       f.oldest_maturity,
       f.newest_maturity
     FROM latest_financials f
     LEFT JOIN latest_students s ON f.student_id = s.student_id
+    LEFT JOIN latest_contacts c ON UPPER(REGEXP_REPLACE(NORMALIZE(s.name, NFD), r'\\p{Mn}', '')) = c.student_name_normalized
     WHERE 1=1 ${branchFilter}
     ORDER BY f.total_value DESC
   `);
