@@ -149,6 +149,7 @@ export default function FinancialPage() {
   }
 
   async function updateStatus(studentId: string, branch: string, status: string) {
+    console.log('updateStatus called', studentId, branch, status);
     const key = `${studentId}-${branch}`;
     setSaving(key);
     const record = {
@@ -156,7 +157,8 @@ export default function FinancialPage() {
       notes: tracking[key]?.notes || "",
       updated_at: new Date().toISOString(),
     };
-    await supabase.from("financial_tracking").upsert(record, { onConflict: "student_id,branch" });
+    const { data, error } = await supabase.from("financial_tracking").upsert(record, { onConflict: "student_id,branch" });
+    console.log('upsert result:', data, 'error:', error);
     setTracking(prev => ({ ...prev, [key]: { ...prev[key], ...record } }));
     setSaving(null);
   }
