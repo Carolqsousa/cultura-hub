@@ -53,7 +53,8 @@ type SortKey = "name" | "branch" | "open_installments" | "total_value" | "oldest
 function calcInterest(value: number, maturityStr: string) {
   if (!maturityStr) return { multa: 0, juros: 0, total: value, daysLate: 0 };
   const today    = new Date();
-  const maturity = new Date(maturityStr);
+  const [y, m, d] = maturityStr.split("-").map(Number);
+  const maturity = new Date(y, m - 1, d);
   const daysLate = Math.max(0, Math.floor((today.getTime() - maturity.getTime()) / (1000 * 60 * 60 * 24)));
   const multa    = daysLate > 0 ? value * 0.02 : 0;
   const juros    = daysLate > 0 ? value * 0.01 * (daysLate / 30) : 0;
@@ -63,6 +64,12 @@ function calcInterest(value: number, maturityStr: string) {
     juros:  Math.round(juros  * 100) / 100,
     total:  Math.round((value + multa + juros) * 100) / 100,
   };
+}
+
+function parseDate(str: string) {
+  if (!str) return null;
+  const [y, m, d] = str.split("-").map(Number);
+  return new Date(y, m - 1, d); // local time, no UTC conversion
 }
 
 export default function FinancialPage() {
@@ -278,7 +285,7 @@ export default function FinancialPage() {
                         <td className="px-3 py-2.5 text-orange-600">R$ {interest.juros.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</td>
                         <td className="px-3 py-2.5 font-bold text-red-600">R$ {interest.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</td>
                         <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">
-                          {s.oldest_maturity ? new Date(s.oldest_maturity).toLocaleDateString("pt-BR") : "—"}
+                          {s.oldest_maturity ? parseDate(s.oldest_maturity)?.toLocaleDateString("pt-BR") : "—"}
                         </td>
                         <td className="px-3 py-2.5 no-print">
                           <select value={tracked.status || "Sem contato"}
@@ -316,7 +323,7 @@ export default function FinancialPage() {
                                   return (
                                     <tr key={ii} className="border-b border-blue-100 last:border-0">
                                       <td className="py-1.5">#{inst.parcel_number}</td>
-                                      <td className="py-1.5">{new Date(inst.maturity).toLocaleDateString("pt-BR")}</td>
+                                      <td className="py-1.5">{parseDate(inst.maturity)?.toLocaleDateString("pt-BR")}</td>
                                       <td className="py-1.5 text-red-600">{iInt.daysLate} dias</td>
                                       <td className="py-1.5">R$ {inst.value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</td>
                                       <td className="py-1.5 text-orange-600">R$ {iInt.multa.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</td>
