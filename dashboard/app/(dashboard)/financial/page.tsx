@@ -179,34 +179,15 @@ export default function FinancialPage() {
 
   return (
     <main className="p-6 space-y-6">
-      <style>{`
-        @media print {
-          .no-print { display: none !important; }
-          .print-only { display: block !important; }
-          body { font-size: 11px; }
-          th, td { padding: 4px 8px !important; }
-        }
-        .print-only { display: none; }
-      `}</style>
-
-      <div className="flex items-center justify-between">
+<div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Financeiro</h1>
           <p className="text-sm text-gray-500 mt-1">Parcelas em aberto</p>
         </div>
-        <button onClick={() => window.print()}
-          className="no-print flex items-center gap-2 bg-gray-900 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors">
-          📄 Gerar PDF
-        </button>
+
       </div>
 
-      <div className="print-only mb-4">
-        <h2 className="text-lg font-bold">Relatório Financeiro — Cultura Inglesa</h2>
-        <p>Período: {startDate} a {endDate} {branch !== "all" ? `| Unidade: ${branch}` : "| Todas as unidades"}</p>
-        <p>Gerado em: {new Date().toLocaleString("pt-BR")}</p>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4 no-print">
+<div className="grid grid-cols-3 gap-4 no-print">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Alunos em atraso</p>
           <p className="text-3xl font-bold text-red-600">{students.length}</p>
