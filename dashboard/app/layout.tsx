@@ -4,7 +4,6 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Cultura Hub",
   description: "Operations dashboard",
-  icons: { icon: "/favicon.png" },
 };
 
 export default function RootLayout({
