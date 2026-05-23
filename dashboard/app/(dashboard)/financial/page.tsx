@@ -167,8 +167,7 @@ export default function FinancialPage() {
   }
 
   async function updateStatus(studentId: string, branch: string, status: string, oldestMaturity: string) {
-    console.log('updateStatus called', studentId, branch, status);
-    const key = `${studentId}-${branch}`;
+    const key = `${studentId}-${branch}-${oldestMaturity}`;
     setSaving(key);
     const record = {
       student_id: studentId, branch, status,
@@ -183,7 +182,7 @@ export default function FinancialPage() {
   }
 
   function updateNotes(studentId: string, branch: string, notes: string, oldestMaturity: string) {
-    const key = `${studentId}-${branch}`;
+    const key = `${studentId}-${branch}-${oldestMaturity}`;
     setTracking(prev => ({
       ...prev,
       [key]: { ...prev[key], student_id: studentId, branch, status: prev[key]?.status || "Sem contato", notes, updated_at: new Date().toISOString() }
