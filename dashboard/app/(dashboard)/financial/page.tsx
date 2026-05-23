@@ -279,6 +279,7 @@ export default function FinancialPage() {
               <tbody className="divide-y divide-gray-100">
                 {filtered.map((s, idx) => {
                   const key      = `${s.student_id}-${s.branch}-${s.oldest_maturity || ''}`;
+                  if (s.student_id === '35727') console.log('row key:', key, 'tracking:', tracking[key]?.status);
                   const interest = calcInterest(Number(s.total_value), s.oldest_maturity);
                   const tracked  = s.tracking;
                   const isExpanded = expanded.has(key);
