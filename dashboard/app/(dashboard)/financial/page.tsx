@@ -114,6 +114,12 @@ export default function FinancialPage() {
 
   const totalValue        = useMemo(() => students.reduce((s, r) => s + Number(r.total_value), 0), [students]);
   const totalInstallments = useMemo(() => students.reduce((s, r) => s + Number(r.open_installments), 0), [students]);
+  const paidCount = useMemo(() => {
+    return students.filter(s => {
+      const key = `${s.student_id}-${s.branch}-${s.oldest_maturity || ""}`;
+      return tracking[key]?.status === "Pago";
+    }).length;
+  }, [students, tracking]);
 
   const filtered = useMemo(() => {
     let rows = students.map(s => ({
@@ -198,7 +204,7 @@ export default function FinancialPage() {
 
       </div>
 
-<div className="grid grid-cols-3 gap-4 no-print">
+<div className="grid grid-cols-4 gap-4 no-print">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Alunos em atraso</p>
           <p className="text-3xl font-bold text-red-600">{students.length}</p>
@@ -210,6 +216,10 @@ export default function FinancialPage() {
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Parcelas em aberto</p>
           <p className="text-3xl font-bold text-orange-500">{totalInstallments}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Pagamentos obtidos</p>
+          <p className="text-3xl font-bold text-green-600">{paidCount}</p>
         </div>
       </div>
 
