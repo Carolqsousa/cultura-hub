@@ -307,7 +307,7 @@ export default function FinancialPage() {
                         </td>
                         <td className="px-3 py-2.5 no-print">
                           <select value={tracked.status || "Sem contato"}
-                            onMouseDown={() => { userChanged.current = true; }} onChange={e => { if (userChanged.current) { updateStatus(s.student_id, s.branch, e.target.value, s.oldest_maturity || ""); userChanged.current = false; }}}
+                            onChange={e => { const newVal = e.target.value; if (newVal !== (tracked.status || "Sem contato")) { updateStatus(s.student_id, s.branch, newVal, s.oldest_maturity || ""); }}}
                             disabled={saving === key}
                             className={`text-xs font-medium rounded-full px-2 py-1 border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-400 ${STATUS_COLORS[tracked.status || "Sem contato"]}`}>
                             {STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
