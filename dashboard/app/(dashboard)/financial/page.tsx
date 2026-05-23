@@ -102,7 +102,11 @@ export default function FinancialPage() {
     supabase.from("financial_tracking").select("*").then(({ data }) => {
       if (!data) return;
       const map: Record<string, TrackingRecord> = {};
-      data.filter(r => r.oldest_maturity).forEach(r => { map[`${r.student_id}-${r.branch}-${r.oldest_maturity}`] = r; });
+      data.filter(r => r.oldest_maturity).forEach(r => { 
+        const k = `${r.student_id}-${r.branch}-${r.oldest_maturity}`;
+        console.log('tracking key loaded:', k, 'status:', r.status);
+        map[k] = r; 
+      });
       setTracking(map);
     });
   }, []);
