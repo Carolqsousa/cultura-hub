@@ -128,7 +128,7 @@ export default function FinancialPage() {
   const filtered = useMemo(() => {
     let rows = students.map(s => ({
       ...s,
-      tracking: tracking[`${s.student_id}-${s.branch}`] || { status: "Sem contato", notes: "" },
+      tracking: tracking[`${s.student_id}-${s.branch}-${s.oldest_maturity || ''}`] || { status: "Sem contato", notes: "" },
     }));
     if (statusFilter !== "all") rows = rows.filter(s => s.tracking.status === statusFilter);
     if (search.trim()) {
