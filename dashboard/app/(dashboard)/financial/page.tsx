@@ -37,6 +37,7 @@ const STATUS_OPTIONS = [
   "Recibo recebido",
   "Aguardando baixa",
   "Pago",
+  "Cancelado",
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -46,6 +47,7 @@ const STATUS_COLORS: Record<string, string> = {
   "Recibo recebido":   "bg-purple-100 text-purple-700",
   "Aguardando baixa":  "bg-orange-100 text-orange-700",
   "Pago":              "bg-green-100 text-green-700",
+  "Cancelado":         "bg-gray-200 text-gray-600",
 };
 
 type SortKey = "name" | "branch" | "open_installments" | "total_value" | "oldest_maturity" | "status";
