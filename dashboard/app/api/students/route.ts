@@ -60,10 +60,10 @@ export async function GET(request: Request) {
       GROUP BY student_id
     ),
     latest_diary AS (
-      SELECT class_name, professor
+      SELECT class_name, branch, professor
       FROM \`${DATASET}.diary_checks\`
       WHERE date = (SELECT MAX(date) FROM \`${DATASET}.diary_checks\`)
-      QUALIFY ROW_NUMBER() OVER (PARTITION BY class_name ORDER BY date DESC) = 1
+      QUALIFY ROW_NUMBER() OVER (PARTITION BY class_name, branch ORDER BY date DESC) = 1
     )
     SELECT
       s.student_id,
@@ -84,7 +84,7 @@ export async function GET(request: Request) {
     JOIN combined c
       ON s.student_id = c.student_id AND s.branch = c.branch
     LEFT JOIN latest_financials f ON s.student_id = f.student_id
-    LEFT JOIN latest_diary d      ON c.class_name = d.class_name
+    LEFT JOIN latest_diary d      ON c.class_name = d.class_name AND s.branch = d.branch
     WHERE 1=1 ${branchFilter}
     ORDER BY s.branch, s.name
   `);
