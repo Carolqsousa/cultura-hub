@@ -95,7 +95,14 @@ export default function OverviewPage() {
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams({ branch, period });
-    if (mode === "compare") params.set("compare_period", comparePeriod);
+    if (mode === "compare") {
+      params.set("compare_period", comparePeriod);
+    } else {
+      // Simple mode: always compare with previous month
+      const [y, m] = period.split("-").map(Number);
+      const prev = new Date(y, m - 2, 1);
+      params.set("compare_period", prev.toISOString().slice(0, 7));
+    }
     fetch(`/api/overview?${params}`, { cache: "no-store" })
       .then(r => r.json())
       .then(d => {
