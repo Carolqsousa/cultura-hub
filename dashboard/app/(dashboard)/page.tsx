@@ -172,9 +172,10 @@ export default function OverviewPage() {
       {loading ? (
         <div className="text-center text-gray-400 py-20">Carregando...</div>
       ) : data && (
-        <div className="space-y-6">
+        <div className="grid grid-cols-2 gap-6">
 
           {/* ── ACADEMIC ── */}
+          <div>
           <div>
             <SectionTitle icon="📚" title="Acadêmico" />
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -208,7 +209,10 @@ export default function OverviewPage() {
             </div>
           </div>
 
+          </div>
+
           {/* ── FINANCIAL ── */}
+          <div>
           <div>
             <SectionTitle icon="💸" title="Financeiro" />
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -236,7 +240,10 @@ export default function OverviewPage() {
             </div>
           </div>
 
+          </div>
+
           {/* ── OPERATIONAL ── */}
+          <div>
           <div>
             <SectionTitle icon="📋" title="Operacional" />
             <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
@@ -256,7 +263,10 @@ export default function OverviewPage() {
             </div>
           </div>
 
+          </div>
+
           {/* ── COMMERCIAL ── */}
+          <div>
           <div>
             <SectionTitle icon="📈" title="Comercial" />
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
@@ -316,6 +326,7 @@ export default function OverviewPage() {
             </div>
           </div>
 
+          </div>
         </div>
       )}
     </main>
