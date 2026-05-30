@@ -97,19 +97,19 @@ export default function TeachersPage() {
   }
 
   if (loading) return (
-    <main className="p-6">
-      <h1 className="text-2xl font-semibold mb-2">Professores</h1>
+    <main className="p-6 bg-gray-50 min-h-screen">
+      <h1 className="text-xl font-bold text-gray-900">Professores</h1>
       <p className="text-sm text-gray-400 mt-4">Carregando dados...</p>
     </main>
   );
 
   return (
-    <main className="p-6">
-      <h1 className="text-2xl font-semibold mb-2">Professores</h1>
+    <main className="p-6 bg-gray-50 min-h-screen">
+      <h1 className="text-xl font-bold text-gray-900">Professores</h1>
       <p className="text-sm text-gray-500 mb-8">Diário de aulas — todas as unidades</p>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 gap-4 mb-8">
+      <div className="grid grid-cols-2 gap-4">
         <MetricCard
           label="Diários pendentes"
           value={String(totalPending)}
@@ -123,7 +123,7 @@ export default function TeachersPage() {
       </div>
 
       {/* Diário por unidade */}
-      <div className="bg-white rounded-xl border p-5 mb-6">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">Diário de aula por unidade</h2>
         {diary.length === 0 && <p className="text-sm text-gray-400">Sem dados</p>}
         {diary.map(r => (
@@ -132,7 +132,7 @@ export default function TeachersPage() {
       </div>
 
       {/* Diário por professor */}
-      <div className="bg-white rounded-xl border p-5">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <h2 className="text-sm font-semibold text-gray-700">
             Diário por professor
@@ -140,17 +140,17 @@ export default function TeachersPage() {
           </h2>
           <div className="flex gap-2 flex-wrap items-center">
             <select value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 outline-none">
+              className="text-sm border border-gray-200 rounded-xl px-3 py-1.5 bg-white shadow-sm text-gray-700 outline-none">
               <option value="all">Todas as unidades</option>
               {branches.filter(b => b !== "all").map(b => <option key={b} value={b}>{b}</option>)}
             </select>
             <select value={filterProf} onChange={e => setFilterProf(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 outline-none">
+              className="text-sm border border-gray-200 rounded-xl px-3 py-1.5 bg-white shadow-sm text-gray-700 outline-none">
               <option value="all">Todos os professores</option>
               {professors.filter(p => p !== "all").map(p => <option key={p} value={p}>{p}</option>)}
             </select>
             <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-              className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 outline-none">
+              className="text-sm border border-gray-200 rounded-xl px-3 py-1.5 bg-white shadow-sm text-gray-700 outline-none">
               <option value="all">Todos os status</option>
               <option value="ok">Em dia (100%)</option>
               <option value="attention">Atenção (70–99%)</option>
@@ -220,7 +220,7 @@ export default function TeachersPage() {
 
 function MetricCard({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <div className="bg-white rounded-xl border p-4">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
       <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">{label}</p>
       <p className={`text-3xl font-semibold ${color}`}>{value}</p>
     </div>

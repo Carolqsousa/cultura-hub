@@ -197,10 +197,10 @@ export default function StudentsPage() {
   }
 
   return (
-    <main className="p-6 space-y-6">
+    <main className="p-6 space-y-5 bg-gray-50 min-h-screen">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Alunos</h1>
+        <h1 className="text-xl font-bold text-gray-900">Alunos</h1>
         <p className="text-sm text-gray-500 mt-1">
           Frequência atualizada aos domingos · Notas e financeiro: Seg/Qua/Sex
         </p>
@@ -274,7 +274,7 @@ export default function StudentsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-12 text-center text-gray-400">Carregando...</div>
         ) : filtered.length === 0 ? (

@@ -111,20 +111,20 @@ export default function ComercialPage() {
         {/* Filters */}
         <div className="flex gap-2 flex-wrap items-center">
           <select value={filterUnit} onChange={e => setFilterUnit(e.target.value)}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 outline-none">
+            className="text-sm border border-gray-200 rounded-xl shadow-sm px-3 py-1.5 bg-white text-gray-700 outline-none">
             <option value="all">Todas as unidades</option>
             {filterOptions.units.map(u => <option key={u} value={u}>{u}</option>)}
           </select>
           <select value={filterResp} onChange={e => setFilterResp(e.target.value)}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 outline-none">
+            className="text-sm border border-gray-200 rounded-xl shadow-sm px-3 py-1.5 bg-white text-gray-700 outline-none">
             <option value="all">Todos os atendentes</option>
             {filterOptions.responsibles.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
           <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 outline-none" />
+            className="text-sm border border-gray-200 rounded-xl shadow-sm px-3 py-1.5 bg-white text-gray-700 outline-none" />
           <span className="text-gray-400 text-sm">até</span>
           <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 outline-none" />
+            className="text-sm border border-gray-200 rounded-xl shadow-sm px-3 py-1.5 bg-white text-gray-700 outline-none" />
           <button onClick={loadData}
             className="text-sm bg-blue-600 text-white px-4 py-1.5 rounded-lg hover:bg-blue-700 transition-colors">
             Aplicar
@@ -338,7 +338,7 @@ export default function ComercialPage() {
 
 function KPICard({ label, value, color, sub }: { label: string; value: string; color: string; sub?: string }) {
   return (
-    <div className="bg-white rounded-xl border p-4">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
       <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">{label}</p>
       <p className={`text-3xl font-semibold ${color}`}>{value}</p>
       {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
@@ -348,7 +348,7 @@ function KPICard({ label, value, color, sub }: { label: string; value: string; c
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-white rounded-xl border p-5 mb-6">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4">
       <h2 className="text-sm font-semibold text-gray-700 mb-4">{title}</h2>
       {children}
     </div>

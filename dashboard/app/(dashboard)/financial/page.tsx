@@ -200,29 +200,29 @@ export default function FinancialPage() {
   }
 
   return (
-    <main className="p-6 space-y-6">
+    <main className="p-6 space-y-5 bg-gray-50 min-h-screen">
 <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Financeiro</h1>
+          <h1 className="text-xl font-bold text-gray-900">Financeiro</h1>
           <p className="text-sm text-gray-500 mt-1">Parcelas em aberto</p>
         </div>
 
       </div>
 
 <div className="grid grid-cols-4 gap-4 no-print">
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Alunos em atraso</p>
           <p className="text-3xl font-bold text-red-600">{students.length}</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Total em aberto</p>
           <p className="text-3xl font-bold text-red-600">R$ {totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Parcelas em aberto</p>
           <p className="text-3xl font-bold text-orange-500">{totalInstallments}</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Pagamentos obtidos</p>
           <p className="text-3xl font-bold text-green-600">{paidCount}</p>
         </div>
@@ -230,7 +230,7 @@ export default function FinancialPage() {
 
       <div className="flex flex-wrap gap-3 items-center no-print">
         <select value={branch} onChange={e => setBranch(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+          className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           {branches.map(b => <option key={b} value={b}>{b === "all" ? "Todas as unidades" : b}</option>)}
         </select>
         <div className="flex items-center gap-2">
@@ -244,7 +244,7 @@ export default function FinancialPage() {
             className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+          className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="all">Todos os status</option>
           {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
