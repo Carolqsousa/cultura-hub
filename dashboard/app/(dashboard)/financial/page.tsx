@@ -95,7 +95,6 @@ export default function FinancialPage() {
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
-    if (branch !== "all") params.set("branch", branch);
     fetch(`/api/financial?${params}`, { cache: "no-store" })
       .then(r => r.json())
       .then(d => { setStudents(d.students || []); setLoading(false); });
@@ -129,7 +128,7 @@ export default function FinancialPage() {
   }, [students, tracking]);
 
   const filtered = useMemo(() => {
-    let rows = students.map(s => ({
+    let rows = students.filter(s => branch === "all" || s.branch === branch).map(s => ({
       ...s,
       tracking: tracking[`${s.student_id}-${s.branch}-${s.oldest_maturity || ''}`] || { status: "Sem contato", notes: "" },
     }));

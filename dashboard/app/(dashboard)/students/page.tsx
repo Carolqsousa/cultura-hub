@@ -119,9 +119,7 @@ export default function StudentsPage() {
   useEffect(() => {
     setLoading(true);
     setStudents([]); // ← add this line to clear before fetching
-    const params = new URLSearchParams();
-    if (branch !== "all") params.set("branch", branch);
-    fetch(`/api/students?${params}`)
+    fetch(`/api/students`)
       .then(r => r.json())
       .then(d => { setStudents(d.students || []); setLoading(false); });
   }, [branch]);
@@ -146,7 +144,7 @@ export default function StudentsPage() {
   }), [enriched]);
 
   const filtered = useMemo(() => {
-    let rows = enriched.filter(s => {
+    let rows = enriched.filter(s => branch === "all" || s.branch === branch).filter(s => {
       if (filter === "critical") return s.level === "critical";
       if (filter === "attention") return s.level === "attention";
       if (filter === "grade") return s.grade_format !== "B" && s.overall_average !== null && s.overall_average < 7;
