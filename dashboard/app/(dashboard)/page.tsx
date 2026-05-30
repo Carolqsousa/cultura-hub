@@ -2,15 +2,13 @@
 
 import { useEffect, useState, useMemo } from "react";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-interface AcademicKPIs  { total_students: number; at_risk_grade: number; pct_at_risk_grade: number; at_risk_attendance: number; pct_at_risk_attendance: number; }
-interface FinancialKPIs { total_overdue: number; defaulting_students: number; pct_defaulting: number; }
-interface OperationalKPIs { total_lessons: number; completed: number; pending: number; pct_complete: number; }
+interface AcademicKPIs   { total_students: number; at_risk_grade: number; pct_at_risk_grade: number; at_risk_attendance: number; pct_at_risk_attendance: number; }
+interface FinancialKPIs  { total_overdue: number; defaulting_students: number; pct_defaulting: number; }
+interface OperationalKPIs{ total_lessons: number; completed: number; pending: number; pct_complete: number; }
 interface CommercialKPIs  { new_leads: number; conversions: number; conversion_rate: number; }
 interface PeriodData { academic: AcademicKPIs; financial: FinancialKPIs; operational: OperationalKPIs; commercial: CommercialKPIs; }
 interface Top3Row { source?: string; responsible?: string; count?: number; total?: number; conversions?: number; }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function monthOptions() {
   const opts = [];
   const now = new Date();
@@ -28,57 +26,97 @@ function pctChange(a: number, b: number) {
   return Math.round((b - a) / a * 100);
 }
 
-function ChangeTag({ from, to, inverse = false }: { from: number; to: number; inverse?: boolean }) {
+function Trend({ from, to, inverse = false }: { from: number; to: number; inverse?: boolean }) {
   const chg = pctChange(from, to);
-  if (chg === null) return null;
-  const positive = inverse ? chg < 0 : chg > 0;
-  const cls = chg === 0 ? "text-gray-400" : positive ? "text-green-600" : "text-red-500";
-  const arrow = chg > 0 ? "↑" : chg < 0 ? "↓" : "–";
-  return <span className={`text-xs font-medium ml-1 ${cls}`}>{arrow}{Math.abs(chg)}%</span>;
+  if (chg === null || chg === 0) return null;
+  const good = inverse ? chg < 0 : chg > 0;
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs font-semibold px-1.5 py-0.5 rounded-full ${
+      good ? "bg-green-50 text-green-600" : "bg-red-50 text-red-500"
+    }`}>
+      {chg > 0 ? "↑" : "↓"}{Math.abs(chg)}%
+    </span>
+  );
 }
 
-// ── KPI Card ──────────────────────────────────────────────────────────────────
-function KPICard({
-  label, value, subValue, compareValue, compareSubValue, color = "text-gray-900", inverse = false
-}: {
-  label: string; value: string; subValue?: string;
-  compareValue?: string; compareSubValue?: string;
-  color?: string; inverse?: boolean;
+function fmt(n: number)  { return n.toLocaleString("pt-BR"); }
+function fmtR(n: number) { return `R$ ${n.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`; }
+
+// ── Top KPI strip (like Invo header) ─────────────────────────────────────────
+function TopKPI({ icon, color, label, value, compare, inverse }: {
+  icon: string; color: string; label: string; value: string;
+  compare?: string; inverse?: boolean;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4">
-      <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">{label}</p>
-      <div className="flex items-end gap-2">
-        <p className={`text-2xl font-bold ${color}`}>{value}</p>
-        {subValue && <p className="text-sm text-gray-400 mb-0.5">{subValue}</p>}
+    <div className="flex items-center gap-4 bg-white rounded-2xl px-5 py-4 shadow-sm border border-gray-100 flex-1">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 ${color}`}>
+        {icon}
       </div>
-      {compareValue !== undefined && (
-        <div className="mt-2 pt-2 border-t border-gray-100">
-          <div className="flex items-end gap-1">
-            <p className="text-lg font-semibold text-gray-500">{compareValue}</p>
-            {compareSubValue && <p className="text-xs text-gray-400 mb-0.5">{compareSubValue}</p>}
-            <ChangeTag
-              from={parseFloat(compareValue.replace(/[^0-9.-]/g, ""))}
+      <div className="min-w-0">
+        <p className="text-xs text-gray-400 font-medium mb-0.5">{label}</p>
+        <div className="flex items-baseline gap-2">
+          <span className="text-xl font-bold text-gray-900 truncate">{value}</span>
+          {compare !== undefined && (
+            <Trend
+              from={parseFloat(compare.replace(/[^0-9.-]/g, ""))}
               to={parseFloat(value.replace(/[^0-9.-]/g, ""))}
               inverse={inverse}
             />
-          </div>
+          )}
         </div>
-      )}
+        {compare !== undefined && (
+          <p className="text-xs text-gray-400 mt-0.5">{compare} anterior</p>
+        )}
+      </div>
     </div>
   );
 }
 
-function SectionTitle({ icon, title }: { icon: string; title: string }) {
+// ── Quadrant card ─────────────────────────────────────────────────────────────
+function Quadrant({ accentColor, icon, title, children }: {
+  accentColor: string; icon: string; title: string; children: React.ReactNode;
+}) {
   return (
-    <div className="flex items-center gap-2 mb-3">
-      <span className="text-lg">{icon}</span>
-      <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">{title}</h2>
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className={`px-5 py-3 flex items-center gap-2 border-b border-gray-100 ${accentColor}`}>
+        <span className="text-base">{icon}</span>
+        <h2 className="text-xs font-bold uppercase tracking-widest">{title}</h2>
+      </div>
+      <div className="p-5 space-y-4">{children}</div>
     </div>
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+// ── Metric row inside quadrant ────────────────────────────────────────────────
+function MetricRow({ label, value, sub, compare, compareSub, color = "text-gray-900", inverse = false }: {
+  label: string; value: string; sub?: string;
+  compare?: string; compareSub?: string;
+  color?: string; inverse?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-sm text-gray-500">{label}</span>
+      <div className="flex items-center gap-2 text-right">
+        {compare !== undefined && (
+          <Trend
+            from={parseFloat(compare.replace(/[^0-9.-]/g, ""))}
+            to={parseFloat(value.replace(/[^0-9.-]/g, ""))}
+            inverse={inverse}
+          />
+        )}
+        <div>
+          <span className={`text-sm font-bold ${color}`}>{value}</span>
+          {sub && <span className="text-xs text-gray-400 ml-1">{sub}</span>}
+          {compare !== undefined && (
+            <p className="text-xs text-gray-300">{compare}{compareSub ? ` ${compareSub}` : ""}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
 export default function OverviewPage() {
   const months = useMemo(() => monthOptions(), []);
 
@@ -95,14 +133,7 @@ export default function OverviewPage() {
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams({ branch, period });
-    if (mode === "compare") {
-      params.set("compare_period", comparePeriod);
-    } else {
-      // Simple mode: always compare with previous month
-      const [y, m] = period.split("-").map(Number);
-      const prev = new Date(y, m - 2, 1);
-      params.set("compare_period", prev.toISOString().slice(0, 7));
-    }
+    if (mode === "compare") params.set("compare_period", comparePeriod);
     fetch(`/api/overview?${params}`, { cache: "no-store" })
       .then(r => r.json())
       .then(d => {
@@ -115,226 +146,129 @@ export default function OverviewPage() {
       .catch(() => setLoading(false));
   }, [branch, period, comparePeriod, mode]);
 
-  const periodLabel  = months.find(m => m.val === period)?.label         || period;
-  const compareLabel = months.find(m => m.val === comparePeriod)?.label  || comparePeriod;
-
-  const fmt = (n: number) => n.toLocaleString("pt-BR");
-  const fmtR = (n: number) => `R$ ${n.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+  const periodLabel  = months.find(m => m.val === period)?.label        || period;
+  const compareLabel = months.find(m => m.val === comparePeriod)?.label || comparePeriod;
 
   return (
-    <main className="p-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-1">Visão geral — todas as unidades</p>
-      </div>
+    <main className="p-6 space-y-5 bg-gray-50 min-h-screen">
 
-      {/* Controls */}
-      <div className="flex flex-wrap gap-3 items-center">
-        {/* Branch */}
-        <select value={branch} onChange={e => setBranch(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="all">Todas as unidades</option>
-          {["Boa Viagem", "Young", "Setubal", "Natal"].map(b => (
-            <option key={b} value={b}>{b}</option>
-          ))}
-        </select>
-
-        {/* Period */}
-        <select value={period} onChange={e => setPeriod(e.target.value)}
-          className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-          {months.map(m => <option key={m.val} value={m.val}>{m.label}</option>)}
-        </select>
-
-        {/* Mode toggle */}
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-          {(["simple", "compare"] as const).map(m => (
-            <button key={m} onClick={() => setMode(m)}
-              className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${
-                mode === m ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-              }`}>
-              {m === "simple" ? "Simples" : "Comparar"}
-            </button>
-          ))}
+      {/* Page header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-sm text-gray-400">{periodLabel}</p>
         </div>
 
-        {/* Compare period picker */}
-        {mode === "compare" && (
-          <select value={comparePeriod} onChange={e => setComparePeriod(e.target.value)}
-            className="text-sm border border-blue-300 rounded-lg px-3 py-2 bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Branch */}
+          <select value={branch} onChange={e => setBranch(e.target.value)}
+            className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="all">Todas as unidades</option>
+            {["Boa Viagem", "Young", "Setubal", "Natal"].map(b => (
+              <option key={b} value={b}>{b}</option>
+            ))}
+          </select>
+
+          {/* Period */}
+          <select value={period} onChange={e => setPeriod(e.target.value)}
+            className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
             {months.map(m => <option key={m.val} value={m.val}>{m.label}</option>)}
           </select>
-        )}
+
+          {/* Mode toggle */}
+          <div className="flex gap-1 bg-gray-200 rounded-xl p-1">
+            {(["simple", "compare"] as const).map(m => (
+              <button key={m} onClick={() => setMode(m)}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
+                  mode === m ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"
+                }`}>
+                {m === "simple" ? "Simples" : "Comparar"}
+              </button>
+            ))}
+          </div>
+
+          {/* Compare period */}
+          {mode === "compare" && (
+            <select value={comparePeriod} onChange={e => setComparePeriod(e.target.value)}
+              className="text-sm border border-blue-200 rounded-xl px-3 py-2 bg-blue-50 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              {months.map(m => <option key={m.val} value={m.val}>{m.label}</option>)}
+            </select>
+          )}
+        </div>
       </div>
 
-      {/* Period labels in compare mode */}
-      {mode === "compare" && (
-        <div className="flex gap-4 text-xs text-gray-500">
-          <span className="font-semibold text-gray-800">{periodLabel}</span>
-          <span>vs</span>
-          <span className="text-blue-600 font-semibold">{compareLabel}</span>
-        </div>
-      )}
-
       {loading ? (
-        <div className="text-center text-gray-400 py-20">Carregando...</div>
+        <div className="flex items-center justify-center py-32 text-gray-300 text-sm">Carregando...</div>
       ) : data && (
-        <div className="grid grid-cols-2 gap-6">
+        <>
+          {/* Top KPI strip */}
+          <div className="flex gap-3 flex-wrap">
+            <TopKPI icon="👥" color="bg-blue-50"   label="Alunos ativos"      value={fmt(data.academic.total_students)}    compare={compareData ? fmt(compareData.academic.total_students)    : undefined} />
+            <TopKPI icon="💸" color="bg-red-50"    label="Total em atraso"    value={fmtR(data.financial.total_overdue)}   compare={compareData ? fmtR(compareData.financial.total_overdue)   : undefined} inverse />
+            <TopKPI icon="📋" color="bg-green-50"  label="Diário OK"          value={`${data.operational.pct_complete}%`}  compare={compareData ? `${compareData.operational.pct_complete}%`  : undefined} />
+            <TopKPI icon="📈" color="bg-purple-50" label="Conversão comercial" value={`${data.commercial.conversion_rate}%`} compare={compareData ? `${compareData.commercial.conversion_rate}%` : undefined} />
+          </div>
 
-          {/* ── ACADEMIC ── */}
-          <div>
-          <div>
-            <SectionTitle icon="📚" title="Acadêmico" />
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <KPICard
-                label="Total de alunos ativos"
-                value={fmt(data.academic.total_students)}
-                compareValue={compareData ? fmt(compareData.academic.total_students) : undefined}
-              />
-              <KPICard
-                label="Em risco acadêmico (nota < 7)"
-                value={fmt(data.academic.at_risk_grade)}
-                subValue={`${data.academic.pct_at_risk_grade}%`}
-                compareValue={compareData ? fmt(compareData.academic.at_risk_grade) : undefined}
-                compareSubValue={compareData ? `${compareData.academic.pct_at_risk_grade}%` : undefined}
-                color={data.academic.pct_at_risk_grade > 10 ? "text-red-600" : "text-gray-900"}
-                inverse
-              />
-              <KPICard
-                label="Frequência abaixo de 70%"
-                value={fmt(data.academic.at_risk_attendance)}
-                subValue={`${data.academic.pct_at_risk_attendance}%`}
-                compareValue={compareData ? fmt(compareData.academic.at_risk_attendance) : undefined}
-                compareSubValue={compareData ? `${compareData.academic.pct_at_risk_attendance}%` : undefined}
-                color={data.academic.pct_at_risk_attendance > 10 ? "text-red-600" : "text-gray-900"}
-                inverse
-              />
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Cancelamentos</p>
-                <p className="text-2xl font-bold text-gray-300">Em breve</p>
+          {/* 2×2 quadrant grid */}
+          <div className="grid grid-cols-2 gap-4">
+
+            {/* ── ACADEMIC ── */}
+            <Quadrant accentColor="bg-blue-50 text-blue-700" icon="📚" title="Acadêmico">
+              <MetricRow label="Total de alunos ativos"   value={fmt(data.academic.total_students)}       compare={compareData ? fmt(compareData.academic.total_students) : undefined} />
+              <MetricRow label="Em risco (nota < 7)"      value={fmt(data.academic.at_risk_grade)}        sub={`${data.academic.pct_at_risk_grade}%`}        compare={compareData ? fmt(compareData.academic.at_risk_grade) : undefined}       compareSub={compareData ? `${compareData.academic.pct_at_risk_grade}%` : undefined}       color={data.academic.pct_at_risk_grade > 10 ? "text-red-600" : "text-gray-900"} inverse />
+              <MetricRow label="Frequência abaixo 70%"    value={fmt(data.academic.at_risk_attendance)}   sub={`${data.academic.pct_at_risk_attendance}%`}   compare={compareData ? fmt(compareData.academic.at_risk_attendance) : undefined}  compareSub={compareData ? `${compareData.academic.pct_at_risk_attendance}%` : undefined}  color={data.academic.pct_at_risk_attendance > 10 ? "text-red-600" : "text-gray-900"} inverse />
+              <div className="flex items-center justify-between pt-1 border-t border-gray-50">
+                <span className="text-sm text-gray-400">Cancelamentos</span>
+                <span className="text-xs text-gray-300 italic">Em breve</span>
               </div>
-            </div>
-          </div>
+            </Quadrant>
 
-          </div>
+            {/* ── FINANCIAL ── */}
+            <Quadrant accentColor="bg-red-50 text-red-700" icon="💸" title="Financeiro">
+              <MetricRow label="Total em atraso"          value={fmtR(data.financial.total_overdue)}      compare={compareData ? fmtR(compareData.financial.total_overdue) : undefined}      color="text-red-600" inverse />
+              <MetricRow label="Alunos inadimplentes"     value={fmt(data.financial.defaulting_students)} compare={compareData ? fmt(compareData.financial.defaulting_students) : undefined}  color={data.financial.pct_defaulting > 10 ? "text-red-600" : "text-gray-900"} inverse />
+              <MetricRow label="% inadimplentes"          value={`${data.financial.pct_defaulting}%`}     compare={compareData ? `${compareData.financial.pct_defaulting}%` : undefined}      color={data.financial.pct_defaulting > 10 ? "text-red-600" : "text-gray-900"} inverse />
+            </Quadrant>
 
-          {/* ── FINANCIAL ── */}
-          <div>
-          <div>
-            <SectionTitle icon="💸" title="Financeiro" />
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <KPICard
-                label="Total em atraso"
-                value={fmtR(data.financial.total_overdue)}
-                compareValue={compareData ? fmtR(compareData.financial.total_overdue) : undefined}
-                color="text-red-600"
-                inverse
-              />
-              <KPICard
-                label="Alunos inadimplentes"
-                value={fmt(data.financial.defaulting_students)}
-                compareValue={compareData ? fmt(compareData.financial.defaulting_students) : undefined}
-                color={data.financial.pct_defaulting > 10 ? "text-red-600" : "text-gray-900"}
-                inverse
-              />
-              <KPICard
-                label="% alunos inadimplentes"
-                value={`${data.financial.pct_defaulting}%`}
-                compareValue={compareData ? `${compareData.financial.pct_defaulting}%` : undefined}
-                color={data.financial.pct_defaulting > 10 ? "text-red-600" : "text-gray-900"}
-                inverse
-              />
-            </div>
-          </div>
+            {/* ── OPERATIONAL ── */}
+            <Quadrant accentColor="bg-green-50 text-green-700" icon="📋" title="Operacional">
+              <MetricRow label="% Diário OK"              value={`${data.operational.pct_complete}%`}  compare={compareData ? `${compareData.operational.pct_complete}%` : undefined}  color={data.operational.pct_complete >= 90 ? "text-green-600" : "text-orange-500"} />
+              <MetricRow label="Diários pendentes"        value={fmt(data.operational.pending)}        compare={compareData ? fmt(compareData.operational.pending) : undefined}         color={data.operational.pending > 0 ? "text-orange-500" : "text-green-600"} inverse />
+              <MetricRow label="Total de aulas"           value={fmt(data.operational.total_lessons)}  compare={compareData ? fmt(compareData.operational.total_lessons) : undefined} />
+            </Quadrant>
 
-          </div>
+            {/* ── COMMERCIAL ── */}
+            <Quadrant accentColor="bg-purple-50 text-purple-700" icon="📈" title="Comercial">
+              <MetricRow label="Novos leads"              value={fmt(data.commercial.new_leads)}       compare={compareData ? fmt(compareData.commercial.new_leads) : undefined} />
+              <MetricRow label="Conversões"               value={fmt(data.commercial.conversions)}     compare={compareData ? fmt(compareData.commercial.conversions) : undefined}   color="text-green-600" />
+              <MetricRow label="Taxa de conversão"        value={`${data.commercial.conversion_rate}%`} compare={compareData ? `${compareData.commercial.conversion_rate}%` : undefined} color={data.commercial.conversion_rate >= 20 ? "text-green-600" : "text-orange-500"} />
 
-          {/* ── OPERATIONAL ── */}
-          <div>
-          <div>
-            <SectionTitle icon="📋" title="Operacional" />
-            <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
-              <KPICard
-                label="% Diário OK"
-                value={`${data.operational.pct_complete}%`}
-                compareValue={compareData ? `${compareData.operational.pct_complete}%` : undefined}
-                color={data.operational.pct_complete >= 90 ? "text-green-600" : "text-orange-500"}
-              />
-              <KPICard
-                label="Diários pendentes"
-                value={fmt(data.operational.pending)}
-                compareValue={compareData ? fmt(compareData.operational.pending) : undefined}
-                color={data.operational.pending > 0 ? "text-orange-500" : "text-green-600"}
-                inverse
-              />
-            </div>
-          </div>
-
-          </div>
-
-          {/* ── COMMERCIAL ── */}
-          <div>
-          <div>
-            <SectionTitle icon="📈" title="Comercial" />
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-              <KPICard
-                label="Novos leads"
-                value={fmt(data.commercial.new_leads)}
-                compareValue={compareData ? fmt(compareData.commercial.new_leads) : undefined}
-              />
-              <KPICard
-                label="Conversões"
-                value={fmt(data.commercial.conversions)}
-                compareValue={compareData ? fmt(compareData.commercial.conversions) : undefined}
-                color="text-green-600"
-              />
-              <KPICard
-                label="Taxa de conversão"
-                value={`${data.commercial.conversion_rate}%`}
-                compareValue={compareData ? `${compareData.commercial.conversion_rate}%` : undefined}
-                color={data.commercial.conversion_rate >= 20 ? "text-green-600" : "text-orange-500"}
-              />
-            </div>
-
-            {/* Top 3 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <p className="text-xs text-gray-400 uppercase tracking-wide mb-3">Top 3 Fontes — últimos 30 dias</p>
-                {top3Sources.length === 0 ? (
-                  <p className="text-sm text-gray-400">Sem dados</p>
-                ) : top3Sources.map((s, i) => (
-                  <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-gray-400 w-4">{i + 1}</span>
-                      <span className="text-sm text-gray-700">{s.source || "—"}</span>
+              <div className="pt-2 border-t border-gray-50 grid grid-cols-2 gap-3">
+                {/* Top 3 sources */}
+                <div>
+                  <p className="text-xs text-gray-400 font-medium mb-2">Top fontes · 30d</p>
+                  {top3Sources.length === 0 ? <p className="text-xs text-gray-300">—</p> : top3Sources.map((s, i) => (
+                    <div key={i} className="flex justify-between items-center py-0.5">
+                      <span className="text-xs text-gray-500 truncate">{i+1}. {s.source || "—"}</span>
+                      <span className="text-xs font-semibold text-gray-700 ml-1">{s.count}</span>
                     </div>
-                    <span className="text-sm font-semibold text-gray-900">{s.count}</span>
-                  </div>
-                ))}
+                  ))}
+                </div>
+                {/* Top 3 salespeople */}
+                <div>
+                  <p className="text-xs text-gray-400 font-medium mb-2">Top atendentes · 30d</p>
+                  {top3Sales.length === 0 ? <p className="text-xs text-gray-300">—</p> : top3Sales.map((s, i) => (
+                    <div key={i} className="flex justify-between items-center py-0.5">
+                      <span className="text-xs text-gray-500 truncate">{i+1}. {(s.responsible || "—").split(" ")[0]}</span>
+                      <span className="text-xs font-semibold text-green-600 ml-1">{s.conversions}✓</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <p className="text-xs text-gray-400 uppercase tracking-wide mb-3">Top 3 Atendentes — últimos 30 dias</p>
-                {top3Sales.length === 0 ? (
-                  <p className="text-sm text-gray-400">Sem dados</p>
-                ) : top3Sales.map((s, i) => (
-                  <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-gray-400 w-4">{i + 1}</span>
-                      <span className="text-sm text-gray-700">{s.responsible || "—"}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-sm font-semibold text-green-600">{s.conversions} conv.</span>
-                      <span className="text-xs text-gray-400 ml-1">/ {s.total}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+            </Quadrant>
 
           </div>
-        </div>
+        </>
       )}
     </main>
   );
