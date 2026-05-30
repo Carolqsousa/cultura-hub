@@ -2,7 +2,7 @@ name: Pipeline — Attendance
 
 on:
   schedule:
-    - cron: "0 10 * * 0"  # Every Sunday at 10h UTC (7h BRT)
+    - cron: "0 10 * * 0,3"  # Every Sunday at 10h UTC (7h BRT)
   workflow_dispatch:
 
 jobs:
