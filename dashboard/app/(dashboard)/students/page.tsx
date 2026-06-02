@@ -136,12 +136,12 @@ export default function StudentsPage() {
   );
 
   // Summary counts
-  const counts = useMemo(() => ({
-    total: enriched.length,
-    critical: enriched.filter(s => s.level === "critical").length,
-    attention: enriched.filter(s => s.level === "attention").length,
-    ok: enriched.filter(s => s.level === "ok").length,
-  }), [enriched]);
+  const counts = useMemo(() => { const rows = branch === "all" ? enriched : enriched.filter(s => s.branch === branch); return ({
+    total: rows.length,
+    critical: rows.filter(s => s.level === "critical").length,
+    attention: rows.filter(s => s.level === "attention").length,
+    ok: rows.filter(s => s.level === "ok").length,
+  }); }, [enriched, branch]);
 
   const filtered = useMemo(() => {
     let rows = enriched.filter(s => branch === "all" || s.branch === branch).filter(s => {
