@@ -1,0 +1,28 @@
+name: Pipeline — Cancellations
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 1-6"   # Mon–Sat at 6h BRT (9h UTC) — runs after students pipeline
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install google-cloud-bigquery
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
+
+      - name: Run cancellations pipeline
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: python pipeline/run_cancellations.py
