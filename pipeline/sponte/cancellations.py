@@ -132,6 +132,27 @@ class CancellationDetector:
             if str(r["class_id"]) not in class_names:
                 class_names[str(r["class_id"])] = r["class_name"] or ""
 
+        # Also try grades table for class names and teachers
+        grades_rows = self._q(f"""
+            SELECT DISTINCT class_id, class_name
+            FROM `{self.project}.{DATASET}.grades`
+            WHERE date = (SELECT MAX(date) FROM `{self.project}.{DATASET}.grades`)
+        """)
+        for r in grades_rows:
+            if str(r["class_id"]) not in class_names:
+                class_names[str(r["class_id"])] = r["class_name"] or ""
+
+        # Get teachers from diary_checks
+        teacher_map = {}
+        teacher_rows = self._q(f"""
+            SELECT DISTINCT class_id, professor
+            FROM `{self.project}.{DATASET}.diary_checks`
+            WHERE date = (SELECT MAX(date) FROM `{self.project}.{DATASET}.diary_checks`)
+            AND professor IS NOT NULL AND professor != ''
+        """)
+        for r in teacher_rows:
+            teacher_map[str(r["class_id"])] = r["professor"] or ""
+
         today = date.today().isoformat()
         rows  = []
 
@@ -148,7 +169,7 @@ class CancellationDetector:
                 "student_name":      prev.get("name") or "",
                 "class_id":          class_id,
                 "class_name":        class_name,
-                "teacher":           prev.get("teacher") or "",
+                "teacher":           teacher_map.get(class_id, prev.get("teacher") or ""),
                 "stage":             stage,
                 "last_seen_date":    str(prev_date),
                 "run_date":          today,
