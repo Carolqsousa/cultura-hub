@@ -59,6 +59,7 @@ def main():
     except Exception as e:
         print(f"  [cancellations] Skipping delete (table may be empty): {e}")
 
+    print(f"  [cancellations] Sample row: {rows[0]}")
     errors = client.insert_rows_json(TABLE, rows)
     if errors:
         print(f"  [cancellations] ❌ Errors: {errors}")
