@@ -50,11 +50,14 @@ def main():
 
     # Avoid duplicate insertions for today
     today = rows[0]["run_date"]
-    client.query(f"""
-        DELETE FROM `{TABLE}`
-        WHERE run_date = '{today}'
-    """).result()
-    print(f"  [cancellations] Cleared existing rows for {today}")
+    try:
+        client.query(f"""
+            DELETE FROM `{TABLE}`
+            WHERE run_date = DATE '{today}'
+        """).result()
+        print(f"  [cancellations] Cleared existing rows for {today}")
+    except Exception as e:
+        print(f"  [cancellations] Skipping delete (table may be empty): {e}")
 
     errors = client.insert_rows_json(TABLE, rows)
     if errors:
