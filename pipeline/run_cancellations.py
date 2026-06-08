@@ -10,7 +10,7 @@ import sys
 from google.cloud import bigquery
 
 # Allow running from repo root
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from pipeline.sponte.cancellations import CancellationDetector
 
 PROJECT = os.environ.get("GCP_PROJECT_ID", "cultura-hub")
