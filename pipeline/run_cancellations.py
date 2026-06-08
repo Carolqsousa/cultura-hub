@@ -29,7 +29,7 @@ def ensure_table(client: bigquery.Client):
         bigquery.SchemaField("teacher",            "STRING"),
         bigquery.SchemaField("stage",              "STRING"),
         bigquery.SchemaField("last_seen_date",     "DATE"),
-        bigquery.SchemaField("run_date",           "DATE",   bigquery.enums.SqlTypeNames.DATE),
+        bigquery.SchemaField("run_date",           "DATE"),
     ]
     table = bigquery.Table(TABLE, schema=schema)
     table.time_partitioning = bigquery.TimePartitioning(field="run_date")
