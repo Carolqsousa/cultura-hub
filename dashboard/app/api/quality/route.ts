@@ -1,5 +1,3 @@
-// dashboard/app/api/quality/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import { BigQuery } from "@google-cloud/bigquery";
 
@@ -31,7 +29,6 @@ function esc(val: string) {
   return val.replace(/'/g, "''");
 }
 
-// Maps dropdown value → cancellations_xls branch code
 const BRANCH_TO_XLS: Record<string, string> = {
   "Boa Viagem": "BV",
   "Young":      "YG",
@@ -53,16 +50,17 @@ export async function GET(req: NextRequest) {
   const e = esc(endDate);
   const sem = esc(semester);
 
-  // Branch filters with explicit table aliases — avoids ambiguous column errors
-  const bfStudents  = branch !== "all" ? `AND s.branch = '${b}'`  : "";
-  const bfLg        = branch !== "all" ? `AND lg.branch = '${b}'` : "";
-  const bfTc        = branch !== "all" ? `AND tc.branch = '${b}'` : "";
-  const bfPlain     = branch !== "all" ? `AND branch = '${b}'`    : "";
-  const xlsBranch    = BRANCH_TO_XLS[branch] || branch;
-  const bfXls        = branch !== "all" ? `AND branch = '${esc(xlsBranch)}'` : "";
+  const bfStudents = branch !== "all" ? `AND s.branch = '${b}'`  : "";
+  const bfLg       = branch !== "all" ? `AND lg.branch = '${b}'` : "";
+  const bfTc       = branch !== "all" ? `AND tc.branch = '${b}'` : "";
+  const xlsBranch  = BRANCH_TO_XLS[branch] || branch;
+  const bfXls      = branch !== "all" ? `AND branch = '${esc(xlsBranch)}'` : "";
 
   try {
     // ── 1. RETENTION BY STAGE ─────────────────────────────────────────────
+    // Uses attendance for stage enrichment — covers all students including
+    // Format B classes and those without grade records.
+    // Uses LEFT JOIN (cohort retention) — new enrollments don't inflate %.
     const retentionSQL = `
       WITH
         snap_start AS (
@@ -75,49 +73,57 @@ export async function GET(req: NextRequest) {
           FROM \`${P}.${D}.students\`
           WHERE date <= '${e}'
         ),
+        latest_att_start AS (
+          SELECT student_id, branch,
+            REGEXP_EXTRACT(MAX(class_name),
+              r'(?i)(ADV|BGN|ELE|INT|MST|PRI|TEA|TEE|UPP|VAN)') AS stage
+          FROM \`${P}.${D}.attendance\`
+          WHERE date = (
+            SELECT MAX(date) FROM \`${P}.${D}.attendance\`
+            WHERE date <= '${s}'
+          )
+          GROUP BY student_id, branch
+        ),
+        latest_att_end AS (
+          SELECT student_id, branch,
+            REGEXP_EXTRACT(MAX(class_name),
+              r'(?i)(ADV|BGN|ELE|INT|MST|PRI|TEA|TEE|UPP|VAN)') AS stage
+          FROM \`${P}.${D}.attendance\`
+          WHERE date = (
+            SELECT MAX(date) FROM \`${P}.${D}.attendance\`
+            WHERE date <= '${e}'
+          )
+          GROUP BY student_id, branch
+        ),
         start_students AS (
           SELECT s.student_id, s.branch,
-            REGEXP_EXTRACT(COALESCE(g.class_name, ''),
-              r'(?i)(ADV|BGN|ELE|INT|MST|PRI|TEA|TEE|UPP|VAN)') AS stage
+            COALESCE(a.stage, '?') AS stage
           FROM \`${P}.${D}.students\` s
-          LEFT JOIN (
-            SELECT student_id, branch, MAX(class_name) AS class_name
-            FROM \`${P}.${D}.grades\`
-            WHERE date = (SELECT d FROM snap_start)
-            GROUP BY student_id, branch
-          ) g USING (student_id, branch)
+          LEFT JOIN latest_att_start a
+            ON a.student_id = s.student_id AND a.branch = s.branch
           WHERE s.date = (SELECT d FROM snap_start)
           ${bfStudents}
         ),
         end_students AS (
-          SELECT s.student_id, s.branch,
-            REGEXP_EXTRACT(COALESCE(g.class_name, ''),
-              r'(?i)(ADV|BGN|ELE|INT|MST|PRI|TEA|TEE|UPP|VAN)') AS stage
+          SELECT s.student_id, s.branch
           FROM \`${P}.${D}.students\` s
-          LEFT JOIN (
-            SELECT student_id, branch, MAX(class_name) AS class_name
-            FROM \`${P}.${D}.grades\`
-            WHERE date = (SELECT d FROM snap_end)
-            GROUP BY student_id, branch
-          ) g USING (student_id, branch)
           WHERE s.date = (SELECT d FROM snap_end)
           ${bfStudents}
         )
       SELECT
-        COALESCE(en.stage, st.stage, '?') AS stage,
-        COUNT(DISTINCT st.student_id)     AS quant_anterior,
-        COUNT(DISTINCT en.student_id)     AS quant_atual,
+        st.stage,
+        COUNT(DISTINCT st.student_id) AS quant_anterior,
+        COUNT(DISTINCT CASE WHEN en.student_id IS NOT NULL THEN st.student_id END) AS quant_atual,
         ROUND(SAFE_DIVIDE(
-          COUNT(DISTINCT en.student_id),
+          COUNT(DISTINCT CASE WHEN en.student_id IS NOT NULL THEN st.student_id END),
           COUNT(DISTINCT st.student_id)
         ) * 100, 1) AS retention_pct,
         CAST(FORMAT_DATE('%Y-%m-%d', (SELECT d FROM snap_start)) AS STRING) AS snap_start_date,
         CAST(FORMAT_DATE('%Y-%m-%d', (SELECT d FROM snap_end))   AS STRING) AS snap_end_date
       FROM start_students st
-      FULL OUTER JOIN end_students en USING (student_id, branch)
-      WHERE COALESCE(en.stage, st.stage, '?') != '?'
-      GROUP BY stage
-      ORDER BY stage
+      LEFT JOIN end_students en USING (student_id, branch)
+      GROUP BY st.stage
+      ORDER BY st.stage
     `;
 
     // ── 2. BY CLASS ───────────────────────────────────────────────────────
@@ -172,7 +178,7 @@ export async function GET(req: NextRequest) {
         ),
         class_cancels AS (
           SELECT class_name, branch,
-            COUNT(*)              AS total_cancels,
+            COUNT(*)               AS total_cancels,
             COUNTIF(is_real_churn) AS real_churn
           FROM \`${P}.${D}.cancellations_xls\`
           WHERE semester = '${sem}'
@@ -182,13 +188,13 @@ export async function GET(req: NextRequest) {
         lg.class_name,
         lg.stage,
         lg.branch,
-        COALESCE(ct.teacher, '')       AS teacher,
-        COALESCE(cs.student_count, 0)  AS student_count,
+        COALESCE(ct.teacher, '')      AS teacher,
+        COALESCE(cs.student_count, 0) AS student_count,
         cf.avg_freq,
         cg.avg_grade,
         cg.grade_format,
-        COALESCE(cc.total_cancels, 0)  AS total_cancels,
-        COALESCE(cc.real_churn, 0)     AS real_churn
+        COALESCE(cc.total_cancels, 0) AS total_cancels,
+        COALESCE(cc.real_churn, 0)    AS real_churn
       FROM latest_grades lg
       LEFT JOIN class_students cs ON cs.class_id = lg.class_id AND cs.branch = lg.branch
       LEFT JOIN class_freq      cf ON cf.class_id = lg.class_id AND cf.branch = lg.branch
@@ -228,9 +234,9 @@ export async function GET(req: NextRequest) {
         teacher_stats AS (
           SELECT
             tc.teacher,
-            ROUND(AVG(la.pct_presence), 1)  AS avg_freq,
-            COUNT(DISTINCT tc.class_id)     AS class_count,
-            COUNT(DISTINCT gr.student_id)   AS student_count
+            ROUND(AVG(la.pct_presence), 1) AS avg_freq,
+            COUNT(DISTINCT tc.class_id)    AS class_count,
+            COUNT(DISTINCT gr.student_id)  AS student_count
           FROM teacher_classes tc
           LEFT JOIN latest_attendance la
             ON la.class_id = tc.class_id AND la.branch = tc.branch
