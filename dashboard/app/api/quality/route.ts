@@ -39,7 +39,7 @@ const BRANCH_TO_XLS: Record<string, string> = {
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const branch    = searchParams.get("branch")   || "all";
-  const startDate = searchParams.get("start")    || "2026-02-01";
+  const startDate = searchParams.get("start")    || "2026-04-29";
   const endDate   = searchParams.get("end")      || new Date().toISOString().slice(0, 10);
   const semester  = searchParams.get("semester") || "2026.1";
 

@@ -222,7 +222,7 @@ export default function QualityPage() {
   const [error, setError]     = useState<string | null>(null);
 
   const [branch, setBranch]   = useState("Todas");
-  const [start, setStart]     = useState("2026-02-01");
+  const [start, setStart]     = useState("2026-04-29");
   const [end, setEnd]         = useState(() => new Date().toISOString().slice(0, 10));
   const [tab, setTab]         = useState<Tab>("stage");
   const [search, setSearch]   = useState("");
