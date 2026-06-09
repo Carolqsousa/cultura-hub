@@ -1,31 +1,9 @@
-# .github/workflows/pipeline_cancellations_xls.yml
-#
-# Runs daily at 8h BRT (11h UTC) Mon–Sat.
-# Only processes NEW files — if you haven't uploaded this week's XLS yet,
-# it exits cleanly in ~5 seconds.
-#
-# SETUP (one-time):
-#   1. Create a Google Drive folder for the XLS files
-#   2. Share it with the service account email (from GCP_CREDENTIALS_JSON → client_email)
-#      with Editor permission
-#   3. Copy the folder ID from the URL and add as GitHub Secret: DRIVE_CANCELLATIONS_FOLDER_ID
-#
-# WEEKLY WORKFLOW:
-#   Every week, export "Matrículas e Rematrículas" from Sponte for each branch
-#   and drop the 4 XLS files into the Drive folder.
-#   The pipeline will pick them up automatically on next run.
-#
-# REPROCESSING A FILE:
-#   Rename it with a date suffix (e.g. BV_cancelamentos_2026-06-09_v2.xls)
-#   so it gets a new Drive file ID and the tracker treats it as new.
-
 name: Cancellations XLS → BigQuery
 
 on:
   schedule:
-    # 11:00 UTC = 08:00 BRT (UTC-3)
     - cron: '0 11 * * 1-6'
-  workflow_dispatch:   # Manual trigger from GitHub Actions tab
+  workflow_dispatch:
 
 jobs:
   run:
@@ -44,6 +22,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r pipeline/requirements.txt
 
+      - name: Debug Drive access
+        env:
+          GCP_CREDENTIALS_JSON:          ${{ secrets.GCP_CREDENTIALS_JSON }}
+          DRIVE_CANCELLATIONS_FOLDER_ID: ${{ secrets.DRIVE_CANCELLATIONS_FOLDER_ID }}
+        run: |
+          python pipeline/sponte/debug_drive.py
+
       - name: Run pipeline
         env:
           GCP_CREDENTIALS_JSON:          ${{ secrets.GCP_CREDENTIALS_JSON }}
@@ -51,9 +36,3 @@ jobs:
           DRIVE_CANCELLATIONS_FOLDER_ID: ${{ secrets.DRIVE_CANCELLATIONS_FOLDER_ID }}
         run: |
           python pipeline/sponte/cancellations_xls.py
-          - name: Debug Drive access
-        env:
-          GCP_CREDENTIALS_JSON:          ${{ secrets.GCP_CREDENTIALS_JSON }}
-          DRIVE_CANCELLATIONS_FOLDER_ID: ${{ secrets.DRIVE_CANCELLATIONS_FOLDER_ID }}
-        run: |
-          python pipeline/sponte/debug_drive.py
