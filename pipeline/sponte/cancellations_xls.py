@@ -59,9 +59,6 @@ GCP_PROJECT     = os.environ.get("GCP_PROJECT_ID", "cultura-hub")
 BQ_DATASET      = "cultura_hub"
 BQ_TABLE        = "cancellations_xls"
 
-# Tracker file stored in the same Drive folder — prevents reprocessing
-TRACKER_FILENAME = "processed_files.json"
-
 # Optional: force a branch name (overrides auto-detection from XLS)
 BRANCH_OVERRIDE  = os.environ.get("BRANCH_OVERRIDE", "")
 
@@ -124,33 +121,44 @@ def download_file(drive, file_id, mime_type=""):
     return buffer.read(), mime_type
 
 
-def load_tracker(drive, folder_id):
-    """Load processed_files.json from Drive. Returns {} if not found."""
-    query = (
-        f"'{folder_id}' in parents "
-        f"and name = '{TRACKER_FILENAME}' "
-        f"and trashed = false"
-    )
-    resp = drive.files().list(q=query, fields="files(id)").execute()
-    files = resp.get("files", [])
-    if not files:
-        return {}, None
-    file_id = files[0]["id"]
-    data    = download_file(drive, file_id)
-    return json.loads(data.decode("utf-8")), file_id
+def load_tracker(bq):
+    """Load processed file IDs from BigQuery tracker table."""
+    table_ref = f"{GCP_PROJECT}.{BQ_DATASET}.cancellations_xls_tracker"
+    try:
+        bq.get_table(table_ref)
+    except Exception:
+        # Create tracker table if it doesn't exist
+        schema = [
+            bigquery.SchemaField("file_id",    "STRING"),
+            bigquery.SchemaField("filename",   "STRING"),
+            bigquery.SchemaField("processed",  "TIMESTAMP"),
+            bigquery.SchemaField("records",    "INTEGER"),
+            bigquery.SchemaField("branch",     "STRING"),
+            bigquery.SchemaField("semester",   "STRING"),
+            bigquery.SchemaField("status",     "STRING"),
+        ]
+        bq.create_table(bigquery.Table(table_ref, schema=schema))
+
+    rows = bq.query(f"SELECT file_id, filename, status FROM `{table_ref}`").result()
+    return {row.file_id: {"filename": row.filename, "status": row.status} for row in rows}
 
 
-def save_tracker(drive, folder_id, tracker, tracker_file_id):
-    """Save processed_files.json back to Drive (update or create)."""
-    from googleapiclient.http import MediaIoBaseUpload
-    content  = json.dumps(tracker, indent=2, ensure_ascii=False).encode("utf-8")
-    media    = MediaIoBaseUpload(io.BytesIO(content), mimetype="application/json")
-
-    if tracker_file_id:
-        drive.files().update(fileId=tracker_file_id, media_body=media).execute()
-    else:
-        meta = {"name": TRACKER_FILENAME, "parents": [folder_id]}
-        drive.files().create(body=meta, media_body=media).execute()
+def save_tracker(bq, file_id, filename, records, branch, semester, status):
+    """Save a single processed file record to BigQuery tracker."""
+    from datetime import datetime, timezone
+    table_ref = f"{GCP_PROJECT}.{BQ_DATASET}.cancellations_xls_tracker"
+    rows = [{
+        "file_id":   file_id,
+        "filename":  filename,
+        "processed": datetime.now(timezone.utc).isoformat(),
+        "records":   records,
+        "branch":    branch or "",
+        "semester":  semester or "",
+        "status":    status,
+    }]
+    errors = bq.insert_rows_json(table_ref, rows)
+    if errors:
+        raise RuntimeError(f"Tracker insert errors: {errors}")
 
 
 # ─── BigQuery helpers ─────────────────────────────────────────────────────────
@@ -270,7 +278,7 @@ def main():
     ensure_table_exists(bq)
 
     # Load tracker
-    tracker, tracker_file_id = load_tracker(drive, DRIVE_FOLDER_ID)
+    tracker = load_tracker(bq)
     print(f"\n📋 Previously processed files: {len(tracker)}")
 
     # List XLS files in Drive folder
@@ -330,30 +338,18 @@ def main():
             total_records += n
 
             # Mark as processed
-            tracker[file_id] = {
-                "filename":   file_name,
-                "processed":  datetime.now(timezone.utc).isoformat(),
-                "records":    n,
-                "branch":     branch,
-                "semester":   semester,
-                "status":     "ok",
-            }
+            save_tracker(bq, file_id, file_name, n, branch, semester, "ok")
+            tracker[file_id] = {"filename": file_name, "status": "ok"}
 
         except Exception as e:
             print(f"  ❌ Error processing {file_name}: {e}")
-            tracker[file_id] = {
-                "filename":  file_name,
-                "processed": datetime.now(timezone.utc).isoformat(),
-                "records":   0,
-                "status":    f"error: {e}",
-            }
+            save_tracker(bq, file_id, file_name, 0, "", "", f"error: {str(e)[:200]}")
+            tracker[file_id] = {"filename": file_name, "status": "error"}
             # Don't re-raise — continue with other files
 
         time.sleep(0.5)
 
-    # Save tracker back to Drive
-    save_tracker(drive, DRIVE_FOLDER_ID, tracker, tracker_file_id)
-    print(f"\n✅ Tracker saved. Total records loaded: {total_records}")
+    print(f"\n✅ Done. Total records loaded: {total_records}")
 
 
 if __name__ == "__main__":
