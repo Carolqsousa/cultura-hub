@@ -19,10 +19,9 @@ interface ClassRow {
   teacher: string;
   student_count: number;
   avg_freq: number | null;
-  avg_grade: number | null;
-  grade_format: string | null;
   total_cancels: number;
   real_churn: number;
+  retention_pct: number | null;
 }
 
 interface TeacherRow {
@@ -30,9 +29,9 @@ interface TeacherRow {
   class_count: number;
   student_count: number;
   avg_freq: number | null;
-  avg_grade: number | null;
   total_cancels: number;
   real_churn: number;
+  retention_pct: number | null;
 }
 
 interface CancelRow {
@@ -69,9 +68,13 @@ type SortDir = "asc" | "desc";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const fmtPct   = (v: number | null) => v == null ? "—" : `${Number(v).toFixed(0)}%`;
-const fmtGrade = (v: number | null, fmt?: string | null) =>
-  fmt === "B" || v == null ? "—" : Number(v).toFixed(1);
+const fmtPct = (v: number | null) => v == null ? "—" : `${Number(v).toFixed(0)}%`;
+
+// Calculate retention % from student count and real churn
+const calcRetention = (students: number, churn: number): number | null => {
+  if (!students) return null;
+  return Math.round((students - churn) / students * 1000) / 10;
+};
 
 const retColor = (v: number | null) =>
   v == null ? "text-gray-400" : v >= 90 ? "text-emerald-600" : v >= 75 ? "text-amber-500" : "text-red-500";
@@ -188,8 +191,8 @@ function ReasonsChart({ rows, total }: { rows: ReasonRow[]; total: number }) {
       </p>
       <div className="space-y-2.5">
         {rows.map(r => {
-          const pct   = total > 0 ? Math.round(r.count / total * 100) : 0;
-          const isOp  = r.reason.toLowerCase().includes("turma não formou");
+          const pct  = total > 0 ? Math.round(r.count / total * 100) : 0;
+          const isOp = r.reason.toLowerCase().includes("turma não formou");
           return (
             <div key={r.reason}>
               <div className="flex justify-between text-xs mb-0.5">
@@ -226,7 +229,7 @@ export default function QualityPage() {
   const [end, setEnd]         = useState(() => new Date().toISOString().slice(0, 10));
   const [tab, setTab]         = useState<Tab>("stage");
   const [search, setSearch]   = useState("");
-  const [showOp, setShowOp]   = useState(true);   // show "turma não formou" cancels
+  const [showOp, setShowOp]   = useState(true);
 
   const [teacherSort, toggleTeacherSort] = useSort({ key: "teacher",    dir: "asc" });
   const [classSort,   toggleClassSort]   = useSort({ key: "class_name", dir: "asc" });
@@ -253,29 +256,44 @@ export default function QualityPage() {
 
   const kpis = useMemo(() => {
     if (!data) return null;
-    const stages    = data.byStage;
-    const anterior  = stages.reduce((s, r) => s + r.quant_anterior, 0);
-    const atual     = stages.reduce((s, r) => s + r.quant_atual, 0);
-    const retPct    = anterior > 0 ? Math.round(atual / anterior * 1000) / 10 : null;
-    const freqs     = data.byClass.map(r => r.avg_freq).filter((v): v is number => v != null);
-    const avgFreq   = freqs.length ? Math.round(freqs.reduce((a,b) => a+b,0) / freqs.length * 10) / 10 : null;
-    const totalCancel   = data.cancels.length;
-    const realChurn     = data.cancels.filter(r => r.is_real_churn).length;
+    const stages   = data.byStage;
+    const anterior = stages.reduce((s, r) => s + r.quant_anterior, 0);
+    const atual    = stages.reduce((s, r) => s + r.quant_atual, 0);
+    const retPct   = anterior > 0 ? Math.round(atual / anterior * 1000) / 10 : null;
+    const freqs    = data.byClass.map(r => r.avg_freq).filter((v): v is number => v != null);
+    const avgFreq  = freqs.length ? Math.round(freqs.reduce((a, b) => a + b, 0) / freqs.length * 10) / 10 : null;
+    const totalCancel = data.cancels.length;
+    const realChurn   = data.cancels.filter(r => r.is_real_churn).length;
     return { anterior, atual, retPct, avgFreq, totalCancel, realChurn };
   }, [data]);
 
-  const filteredTeachers = useMemo(() => {
+  // Add retention_pct to teacher and class rows client-side
+  const teacherRows = useMemo(() => {
     if (!data) return [];
+    return data.byTeacher.map(r => ({
+      ...r,
+      retention_pct: calcRetention(r.student_count, r.real_churn),
+    }));
+  }, [data]);
+
+  const classRows = useMemo(() => {
+    if (!data) return [];
+    return data.byClass.map(r => ({
+      ...r,
+      retention_pct: calcRetention(r.student_count, r.real_churn),
+    }));
+  }, [data]);
+
+  const filteredTeachers = useMemo(() => {
     return sortRows(
-      data.byTeacher.filter(r => !search || r.teacher.toLowerCase().includes(search.toLowerCase())),
+      teacherRows.filter(r => !search || r.teacher.toLowerCase().includes(search.toLowerCase())),
       teacherSort
     );
-  }, [data, teacherSort, search]);
+  }, [teacherRows, teacherSort, search]);
 
   const filteredClasses = useMemo(() => {
-    if (!data) return [];
     return sortRows(
-      data.byClass.filter(r =>
+      classRows.filter(r =>
         !search ||
         r.class_name.toLowerCase().includes(search.toLowerCase()) ||
         r.teacher.toLowerCase().includes(search.toLowerCase()) ||
@@ -283,7 +301,7 @@ export default function QualityPage() {
       ),
       classSort
     );
-  }, [data, classSort, search]);
+  }, [classRows, classSort, search]);
 
   const filteredCancels = useMemo(() => {
     if (!data) return [];
@@ -353,12 +371,12 @@ export default function QualityPage() {
       {!loading && kpis && (
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
           {[
-            { label: "Alunos (início)",   value: String(kpis.anterior) },
-            { label: "Alunos (agora)",    value: String(kpis.atual) },
-            { label: "Retenção",          value: fmtPct(kpis.retPct),    color: retColor(kpis.retPct) },
-            { label: "Freq. Média",       value: fmtPct(kpis.avgFreq),   color: freqColor(kpis.avgFreq) },
-            { label: "Rescisões",         value: String(kpis.totalCancel) },
-            { label: "Churn real",        value: String(kpis.realChurn), color: kpis.realChurn > 10 ? "text-red-500" : "text-gray-900" },
+            { label: "Alunos (início)",  value: String(kpis.anterior) },
+            { label: "Alunos (agora)",   value: String(kpis.atual) },
+            { label: "Retenção",         value: fmtPct(kpis.retPct),    color: retColor(kpis.retPct) },
+            { label: "Freq. Média",      value: fmtPct(kpis.avgFreq),   color: freqColor(kpis.avgFreq) },
+            { label: "Rescisões",        value: String(kpis.totalCancel) },
+            { label: "Churn real",       value: String(kpis.realChurn), color: kpis.realChurn > 10 ? "text-red-500" : "text-gray-900" },
           ].map(({ label, value, color }) => (
             <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3">
               <p className="text-xs text-gray-500 mb-1">{label}</p>
@@ -398,8 +416,6 @@ export default function QualityPage() {
               {data?.byStage.map(r => <StageCard key={r.stage} row={r} />)}
             </div>
           )}
-
-          {/* 2026.2 placeholder */}
           <div className="mt-2 bg-blue-50 border border-blue-100 rounded-2xl px-5 py-4 flex items-start gap-3">
             <span className="text-2xl">🔄</span>
             <div>
@@ -428,26 +444,32 @@ export default function QualityPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  <Th label="Professor"   col="teacher"       sort={teacherSort} onSort={toggleTeacherSort} />
-                  <Th label="Turmas"      col="class_count"   sort={teacherSort} onSort={toggleTeacherSort} align="right" />
-                  <Th label="Alunos"      col="student_count" sort={teacherSort} onSort={toggleTeacherSort} align="right" />
-                  <Th label="Freq %"      col="avg_freq"      sort={teacherSort} onSort={toggleTeacherSort} align="right" />
-                  <Th label="Nota"        col="avg_grade"     sort={teacherSort} onSort={toggleTeacherSort} align="right" />
-                  <Th label="Rescisões"   col="real_churn"    sort={teacherSort} onSort={toggleTeacherSort} align="right" />
+                  <Th label="Professor"  col="teacher"        sort={teacherSort} onSort={toggleTeacherSort} />
+                  <Th label="Turmas"     col="class_count"    sort={teacherSort} onSort={toggleTeacherSort} align="right" />
+                  <Th label="Alunos"     col="student_count"  sort={teacherSort} onSort={toggleTeacherSort} align="right" />
+                  <Th label="Freq %"     col="avg_freq"       sort={teacherSort} onSort={toggleTeacherSort} align="right" />
+                  <Th label="Rescisões"  col="real_churn"     sort={teacherSort} onSort={toggleTeacherSort} align="right" />
+                  <Th label="Retenção %" col="retention_pct"  sort={teacherSort} onSort={toggleTeacherSort} align="right" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {loading ? <Skeleton rows={6} cols={6} /> : filteredTeachers.map(r => (
                   <tr key={r.teacher} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-3 py-2.5 font-medium text-gray-800">{r.teacher || <span className="text-gray-400 italic">Sem professor</span>}</td>
+                    <td className="px-3 py-2.5 font-medium text-gray-800">
+                      {r.teacher || <span className="text-gray-400 italic">Sem professor</span>}
+                    </td>
                     <td className="px-3 py-2.5 text-right text-gray-600">{r.class_count}</td>
                     <td className="px-3 py-2.5 text-right text-gray-600">{r.student_count}</td>
-                    <td className={`px-3 py-2.5 text-right font-semibold ${freqColor(r.avg_freq)}`}>{fmtPct(r.avg_freq)}</td>
-                    <td className="px-3 py-2.5 text-right text-gray-700">{fmtGrade(r.avg_grade)}</td>
+                    <td className={`px-3 py-2.5 text-right font-semibold ${freqColor(r.avg_freq)}`}>
+                      {fmtPct(r.avg_freq)}
+                    </td>
                     <td className="px-3 py-2.5 text-right">
                       {r.real_churn > 0
                         ? <span className="text-red-500 font-semibold">{r.real_churn}</span>
                         : <span className="text-gray-300">0</span>}
+                    </td>
+                    <td className={`px-3 py-2.5 text-right font-semibold ${retColor(r.retention_pct)}`}>
+                      {fmtPct(r.retention_pct)}
                     </td>
                   </tr>
                 ))}
@@ -478,8 +500,8 @@ export default function QualityPage() {
                   <Th label="Professor"  col="teacher"       sort={classSort} onSort={toggleClassSort} />
                   <Th label="Alunos"     col="student_count" sort={classSort} onSort={toggleClassSort} align="right" />
                   <Th label="Freq %"     col="avg_freq"      sort={classSort} onSort={toggleClassSort} align="right" />
-                  <Th label="Nota"       col="avg_grade"     sort={classSort} onSort={toggleClassSort} align="right" />
                   <Th label="Rescisões"  col="real_churn"    sort={classSort} onSort={toggleClassSort} align="right" />
+                  <Th label="Retenção %" col="retention_pct" sort={classSort} onSort={toggleClassSort} align="right" />
                   {branch === "Todas" && <Th label="Unidade" col="branch" sort={classSort} onSort={toggleClassSort} />}
                 </tr>
               </thead>
@@ -492,19 +514,24 @@ export default function QualityPage() {
                         {r.stage || "?"}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{r.teacher || <span className="text-gray-400 italic">—</span>}</td>
+                    <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
+                      {r.teacher || <span className="text-gray-400 italic">—</span>}
+                    </td>
                     <td className="px-3 py-2.5 text-right text-gray-600">{r.student_count}</td>
-                    <td className={`px-3 py-2.5 text-right font-semibold ${freqColor(r.avg_freq)}`}>{fmtPct(r.avg_freq)}</td>
-                    <td className="px-3 py-2.5 text-right text-gray-700">
-                      {fmtGrade(r.avg_grade, r.grade_format)}
-                      {r.grade_format === "B" && <span className="ml-1 text-xs text-gray-400" title="Formato B — sem notas no Sponte">ⓘ</span>}
+                    <td className={`px-3 py-2.5 text-right font-semibold ${freqColor(r.avg_freq)}`}>
+                      {fmtPct(r.avg_freq)}
                     </td>
                     <td className="px-3 py-2.5 text-right">
                       {r.real_churn > 0
                         ? <span className="text-red-500 font-semibold">{r.real_churn}</span>
                         : <span className="text-gray-300">0</span>}
                     </td>
-                    {branch === "Todas" && <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{r.branch}</td>}
+                    <td className={`px-3 py-2.5 text-right font-semibold ${retColor(r.retention_pct)}`}>
+                      {fmtPct(r.retention_pct)}
+                    </td>
+                    {branch === "Todas" && (
+                      <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap">{r.branch}</td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -517,19 +544,14 @@ export default function QualityPage() {
       {/* ── Cancels tab ── */}
       {tab === "cancels" && (
         <div className="space-y-4">
-
-          {/* Reasons chart + toggle */}
           {!loading && data && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <ReasonsChart
-                rows={data.reasons}
-                total={data.cancels.length}
-              />
+              <ReasonsChart rows={data.reasons} total={data.cancels.length} />
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col gap-3">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Resumo</p>
                 <div className="grid grid-cols-2 gap-3">
                   {[
-                    { label: "Total rescisões",    value: data.cancels.length },
+                    { label: "Total rescisões",   value: data.cancels.length },
                     { label: "Churn real",         value: data.cancels.filter(r => r.is_real_churn).length },
                     { label: "Turma não formou",   value: data.cancels.filter(r => r.is_turma_nao_formou).length },
                     { label: "Motivos distintos",  value: data.reasons.length },
@@ -543,8 +565,6 @@ export default function QualityPage() {
               </div>
             </div>
           )}
-
-          {/* Table */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-50 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-3">
@@ -593,7 +613,9 @@ export default function QualityPage() {
                           ? <span className="text-gray-400 italic">{r.reason}</span>
                           : <span className="text-gray-700">{r.reason}</span>}
                       </td>
-                      {branch === "Todas" && <td className="px-3 py-2.5 text-gray-500">{r.branch}</td>}
+                      {branch === "Todas" && (
+                        <td className="px-3 py-2.5 text-gray-500">{r.branch}</td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
