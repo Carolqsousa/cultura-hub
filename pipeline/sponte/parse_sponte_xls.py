@@ -96,12 +96,14 @@ def clean_contract(raw):
     except ValueError:
         return None, None
 
-def parse_xls(path, branch_override=None):
+def parse_xls(path, branch_override=None, force_engine=None):
     """
-    Parse one Sponte XLS file.
+    Parse one Sponte XLS file or Google-Sheets-exported XLSX.
     Returns list of dicts, one per cancellation/event row.
+    force_engine: "openpyxl" for xlsx exports, None = auto (xlrd for .xls)
     """
-    df = pd.read_excel(path, engine="xlrd", header=None, sheet_name=0)
+    engine = force_engine or "xlrd"
+    df = pd.read_excel(path, engine=engine, header=None, sheet_name=0)
 
     # ── Branch from row 0, col 8 ─────────────────────────────────
     branch_raw = str(df.iloc[0, 8]).strip() if pd.notna(df.iloc[0, 8]) else ""

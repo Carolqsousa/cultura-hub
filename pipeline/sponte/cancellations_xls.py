@@ -86,31 +86,42 @@ def build_google_clients():
 # ─── Drive helpers ────────────────────────────────────────────────────────────
 
 def list_xls_files(drive, folder_id):
-    """Return list of {id, name, modifiedTime} for .xls files in folder."""
+    """Return list of {id, name, modifiedTime} for .xls or Google Sheets files in folder."""
     query = (
         f"'{folder_id}' in parents "
-        f"and mimeType != 'application/vnd.google-apps.folder' "
         f"and trashed = false "
-        f"and (name contains '.xls')"
+        f"and ("
+        f"name contains '.xls' "
+        f"or mimeType = 'application/vnd.google-apps.spreadsheet'"
+        f")"
     )
     resp = drive.files().list(
         q=query,
-        fields="files(id, name, modifiedTime)",
+        fields="files(id, name, mimeType, modifiedTime)",
         orderBy="modifiedTime desc"
     ).execute()
     return resp.get("files", [])
 
 
-def download_file(drive, file_id):
-    """Download a Drive file → bytes in memory."""
-    request  = drive.files().get_media(fileId=file_id)
-    buffer   = io.BytesIO()
+def download_file(drive, file_id, mime_type=""):
+    """Download a Drive file → bytes in memory.
+    Google Sheets files are exported as xlsx; regular files are downloaded directly.
+    """
+    if mime_type == "application/vnd.google-apps.spreadsheet":
+        # Export Google Sheets → xlsx (xlrd can read xlsx too)
+        request = drive.files().export_media(
+            fileId=file_id,
+            mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    else:
+        request = drive.files().get_media(fileId=file_id)
+    buffer = io.BytesIO()
     downloader = MediaIoBaseDownload(buffer, request)
     done = False
     while not done:
         _, done = downloader.next_chunk()
     buffer.seek(0)
-    return buffer.read()
+    return buffer.read(), mime_type
 
 
 def load_tracker(drive, folder_id):
@@ -286,13 +297,17 @@ def main():
 
         try:
             # Download to temp file (parse_xls needs a path, not bytes)
-            raw_bytes = download_file(drive, file_id)
-            with tempfile.NamedTemporaryFile(suffix=".xls", delete=False) as tmp:
+            file_mime  = file_info.get("mimeType", "")
+            raw_bytes, file_mime = download_file(drive, file_id, file_mime)
+            # Google Sheets exports as xlsx; plain uploads keep .xls
+            suffix = ".xlsx" if file_mime == "application/vnd.google-apps.spreadsheet" else ".xls"
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                 tmp.write(raw_bytes)
                 tmp_path = tmp.name
 
-            # Parse
-            records = parse_xls(tmp_path, branch_override=BRANCH_OVERRIDE or None)
+            # Parse (pass suffix so parser picks correct engine)
+            records = parse_xls(tmp_path, branch_override=BRANCH_OVERRIDE or None,
+                                force_engine="openpyxl" if suffix == ".xlsx" else None)
             os.unlink(tmp_path)
 
             if not records:
