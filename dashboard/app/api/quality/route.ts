@@ -36,6 +36,17 @@ const BRANCH_TO_XLS: Record<string, string> = {
   "Natal":      "CI Lagoa Nova",
 };
 
+// Normalizes cancellations_xls branch codes to match the other tables
+const XLS_BRANCH_NORMALIZE = `
+  CASE branch
+    WHEN 'BV'            THEN 'Boa Viagem'
+    WHEN 'YG'            THEN 'Young'
+    WHEN 'SET'           THEN 'Setubal'
+    WHEN 'CI Lagoa Nova' THEN 'Natal'
+    ELSE branch
+  END
+`;
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const branch    = searchParams.get("branch")   || "all";
@@ -45,22 +56,21 @@ export async function GET(req: NextRequest) {
 
   const P = PROJECT;
   const D = DATASET;
-  const b = esc(branch);
   const s = esc(startDate);
   const e = esc(endDate);
   const sem = esc(semester);
 
-  const bfStudents = branch !== "all" ? `AND s.branch = '${b}'`  : "";
-  const bfLg       = branch !== "all" ? `AND lg.branch = '${b}'` : "";
-  const bfTc       = branch !== "all" ? `AND tc.branch = '${b}'` : "";
+  const bfStudents = branch !== "all" ? `AND s.branch = '${esc(branch)}'`  : "";
+  const bfLg       = branch !== "all" ? `AND lg.branch = '${esc(branch)}'` : "";
+  const bfTc       = branch !== "all" ? `AND tc.branch = '${esc(branch)}'` : "";
   const xlsBranch  = BRANCH_TO_XLS[branch] || branch;
   const bfXls      = branch !== "all" ? `AND branch = '${esc(xlsBranch)}'` : "";
 
   try {
     // ── 1. RETENTION BY STAGE ─────────────────────────────────────────────
     // Uses attendance for stage enrichment — covers all students including
-    // Format B classes and those without grade records.
-    // Uses LEFT JOIN (cohort retention) — new enrollments don't inflate %.
+    // Format B classes. LEFT JOIN = cohort retention, new enrollments don't
+    // inflate the %.
     const retentionSQL = `
       WITH
         snap_start AS (
@@ -81,17 +91,6 @@ export async function GET(req: NextRequest) {
           WHERE date = (
             SELECT MAX(date) FROM \`${P}.${D}.attendance\`
             WHERE date <= '${s}'
-          )
-          GROUP BY student_id, branch
-        ),
-        latest_att_end AS (
-          SELECT student_id, branch,
-            REGEXP_EXTRACT(MAX(class_name),
-              r'(?i)(ADV|BGN|ELE|INT|MST|PRI|TEA|TEE|UPP|VAN)') AS stage
-          FROM \`${P}.${D}.attendance\`
-          WHERE date = (
-            SELECT MAX(date) FROM \`${P}.${D}.attendance\`
-            WHERE date <= '${e}'
           )
           GROUP BY student_id, branch
         ),
@@ -127,6 +126,10 @@ export async function GET(req: NextRequest) {
     `;
 
     // ── 2. BY CLASS ───────────────────────────────────────────────────────
+    // Cancellations joined by:
+    //   1. Normalizing XLS branch codes → full branch names
+    //   2. Matching on class code (before " - ") + normalized branch
+    // This handles both minor name variations and cross-branch collisions.
     const byClassSQL = `
       WITH
         latest_grades AS (
@@ -158,18 +161,6 @@ export async function GET(req: NextRequest) {
           )
           GROUP BY class_id, branch
         ),
-        class_grades AS (
-          SELECT gr.class_id, gr.branch,
-            ROUND(AVG(gr.overall_average), 1) AS avg_grade,
-            MAX(gr.grade_format)               AS grade_format
-          FROM \`${P}.${D}.grades\` gr
-          JOIN latest_grades lg
-            ON gr.class_id = lg.class_id
-            AND gr.branch  = lg.branch
-            AND gr.date    = lg.grade_date
-          WHERE gr.overall_average IS NOT NULL
-          GROUP BY gr.class_id, gr.branch
-        ),
         class_teachers AS (
           SELECT class_id, branch, MAX(professor) AS teacher
           FROM \`${P}.${D}.diary_checks\`
@@ -177,12 +168,14 @@ export async function GET(req: NextRequest) {
           GROUP BY class_id, branch
         ),
         class_cancels AS (
-          SELECT class_name, branch,
+          SELECT
+            TRIM(SPLIT(class_name, ' - ')[OFFSET(0)]) AS class_code,
+            ${XLS_BRANCH_NORMALIZE} AS branch,
             COUNT(*)               AS total_cancels,
             COUNTIF(is_real_churn) AS real_churn
           FROM \`${P}.${D}.cancellations_xls\`
           WHERE semester = '${sem}'
-          GROUP BY class_name, branch
+          GROUP BY class_code, branch
         )
       SELECT
         lg.class_name,
@@ -191,16 +184,15 @@ export async function GET(req: NextRequest) {
         COALESCE(ct.teacher, '')      AS teacher,
         COALESCE(cs.student_count, 0) AS student_count,
         cf.avg_freq,
-        cg.avg_grade,
-        cg.grade_format,
         COALESCE(cc.total_cancels, 0) AS total_cancels,
         COALESCE(cc.real_churn, 0)    AS real_churn
       FROM latest_grades lg
       LEFT JOIN class_students cs ON cs.class_id = lg.class_id AND cs.branch = lg.branch
       LEFT JOIN class_freq      cf ON cf.class_id = lg.class_id AND cf.branch = lg.branch
-      LEFT JOIN class_grades    cg ON cg.class_id = lg.class_id AND cg.branch = lg.branch
       LEFT JOIN class_teachers  ct ON ct.class_id = lg.class_id AND ct.branch = lg.branch
-      LEFT JOIN class_cancels   cc ON cc.class_name = lg.class_name AND cc.branch = lg.branch
+      LEFT JOIN class_cancels   cc
+        ON cc.class_code = TRIM(SPLIT(lg.class_name, ' - ')[OFFSET(0)])
+        AND cc.branch = lg.branch
       WHERE 1=1 ${bfLg}
       ORDER BY lg.class_name
     `;
@@ -248,18 +240,6 @@ export async function GET(req: NextRequest) {
           WHERE 1=1 ${bfTc}
           GROUP BY tc.teacher
         ),
-        teacher_grades AS (
-          SELECT tc.teacher,
-            ROUND(AVG(gr.overall_average), 1) AS avg_grade
-          FROM teacher_classes tc
-          JOIN \`${P}.${D}.grades\` gr
-            ON gr.class_id = tc.class_id AND gr.branch = tc.branch
-          JOIN latest_grades lg
-            ON lg.class_id = tc.class_id AND lg.branch = tc.branch
-            AND gr.date = lg.grade_date
-          WHERE gr.overall_average IS NOT NULL
-          GROUP BY tc.teacher
-        ),
         teacher_cancels AS (
           SELECT teacher,
             COUNT(*)               AS total_cancels,
@@ -273,11 +253,9 @@ export async function GET(req: NextRequest) {
         ts.class_count,
         ts.student_count,
         ts.avg_freq,
-        tg.avg_grade,
         COALESCE(tc.total_cancels, 0) AS total_cancels,
         COALESCE(tc.real_churn, 0)    AS real_churn
       FROM teacher_stats ts
-      LEFT JOIN teacher_grades  tg ON tg.teacher = ts.teacher
       LEFT JOIN teacher_cancels tc ON tc.teacher = ts.teacher
       ORDER BY ts.teacher
     `;
@@ -286,15 +264,9 @@ export async function GET(req: NextRequest) {
     const cancelsSQL = `
       SELECT
         FORMAT_DATE('%Y-%m-%d', event_date) AS event_date,
-        branch,
-        student_name,
-        class_name,
-        stage,
-        teacher,
-        reason,
-        attendant,
-        is_real_churn,
-        is_turma_nao_formou
+        branch, student_name, class_name, stage,
+        teacher, reason, attendant,
+        is_real_churn, is_turma_nao_formou
       FROM \`${P}.${D}.cancellations_xls\`
       WHERE semester = '${sem}' ${bfXls}
       ORDER BY event_date DESC
@@ -328,12 +300,7 @@ export async function GET(req: NextRequest) {
       : { start: startDate, end: endDate };
 
     return NextResponse.json({
-      snapDates,
-      byStage,
-      byClass,
-      byTeacher,
-      cancels,
-      reasons,
+      snapDates, byStage, byClass, byTeacher, cancels, reasons,
     });
 
   } catch (err: any) {
