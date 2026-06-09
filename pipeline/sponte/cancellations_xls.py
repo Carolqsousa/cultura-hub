@@ -1,0 +1,345 @@
+"""
+pipeline/sponte/cancellations_xls.py
+=====================================
+Watches a Google Drive folder for Sponte "Matrículas e Rematrículas" XLS files
+and loads them into BigQuery `cancellations_xls` table.
+
+FLOW:
+  1. List all .xls files in the configured Drive folder
+  2. Check which ones have already been loaded (via processed_files tracker)
+  3. For each new file: download → parse → load to BigQuery → mark as processed
+  4. If no new files: exit cleanly (idempotent — safe to run every day)
+
+WEEKLY CADENCE:
+  You drop 4 XLS files (one per branch) into the Drive folder each week.
+  The pipeline runs daily but only processes files it hasn't seen before.
+  Reprocessing is blocked by the processed_files.json tracker in Drive.
+
+⚠️  RISK: If you upload a corrected version of a file with the same name,
+    it won't be reprocessed. Add a date suffix to the filename to force it:
+    e.g.  BV_cancelamentos_2026-06-09.xls
+
+BRANCH DETECTION:
+  Branch name is read from inside the XLS (row 0, col 8: "Cultura Inglesa BV").
+  You don't need to name files in any specific way — the branch is auto-detected.
+  Manual override: set BRANCH_OVERRIDE env var (useful for testing).
+
+Usage:
+  python3 cancellations_xls.py
+
+GitHub Actions: see .github/workflows/pipeline_cancellations_xls.yml
+"""
+
+import os
+import io
+import json
+import tempfile
+import time
+from datetime import datetime, timezone
+
+# Google Drive + BigQuery
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
+from google.cloud import bigquery
+
+# Local parser (same file we built and validated)
+import sys
+sys.path.insert(0, os.path.dirname(__file__))
+from parse_sponte_xls import parse_xls
+
+# ─── Config ───────────────────────────────────────────────────────────────────
+
+# Google Drive folder ID where you drop the XLS files each week.
+# Get this from the folder URL: drive.google.com/drive/folders/<FOLDER_ID>
+DRIVE_FOLDER_ID = os.environ["DRIVE_CANCELLATIONS_FOLDER_ID"]
+
+# BigQuery
+GCP_PROJECT     = os.environ.get("GCP_PROJECT_ID", "cultura-hub")
+BQ_DATASET      = "cultura_hub"
+BQ_TABLE        = "cancellations_xls"
+
+# Tracker file stored in the same Drive folder — prevents reprocessing
+TRACKER_FILENAME = "processed_files.json"
+
+# Optional: force a branch name (overrides auto-detection from XLS)
+BRANCH_OVERRIDE  = os.environ.get("BRANCH_OVERRIDE", "")
+
+# Google credentials — same JSON used by all other pipelines
+GCP_CREDS_JSON   = os.environ["GCP_CREDENTIALS_JSON"]
+
+
+# ─── Google clients ───────────────────────────────────────────────────────────
+
+def build_google_clients():
+    scopes = [
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/bigquery",
+    ]
+    creds_dict = json.loads(GCP_CREDS_JSON)
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    drive = build("drive", "v3", credentials=creds)
+    bq    = bigquery.Client(project=GCP_PROJECT, credentials=creds)
+    return drive, bq
+
+
+# ─── Drive helpers ────────────────────────────────────────────────────────────
+
+def list_xls_files(drive, folder_id):
+    """Return list of {id, name, modifiedTime} for .xls files in folder."""
+    query = (
+        f"'{folder_id}' in parents "
+        f"and mimeType != 'application/vnd.google-apps.folder' "
+        f"and trashed = false "
+        f"and (name contains '.xls')"
+    )
+    resp = drive.files().list(
+        q=query,
+        fields="files(id, name, modifiedTime)",
+        orderBy="modifiedTime desc"
+    ).execute()
+    return resp.get("files", [])
+
+
+def download_file(drive, file_id):
+    """Download a Drive file → bytes in memory."""
+    request  = drive.files().get_media(fileId=file_id)
+    buffer   = io.BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+    buffer.seek(0)
+    return buffer.read()
+
+
+def load_tracker(drive, folder_id):
+    """Load processed_files.json from Drive. Returns {} if not found."""
+    query = (
+        f"'{folder_id}' in parents "
+        f"and name = '{TRACKER_FILENAME}' "
+        f"and trashed = false"
+    )
+    resp = drive.files().list(q=query, fields="files(id)").execute()
+    files = resp.get("files", [])
+    if not files:
+        return {}, None
+    file_id = files[0]["id"]
+    data    = download_file(drive, file_id)
+    return json.loads(data.decode("utf-8")), file_id
+
+
+def save_tracker(drive, folder_id, tracker, tracker_file_id):
+    """Save processed_files.json back to Drive (update or create)."""
+    from googleapiclient.http import MediaIoBaseUpload
+    content  = json.dumps(tracker, indent=2, ensure_ascii=False).encode("utf-8")
+    media    = MediaIoBaseUpload(io.BytesIO(content), mimetype="application/json")
+
+    if tracker_file_id:
+        drive.files().update(fileId=tracker_file_id, media_body=media).execute()
+    else:
+        meta = {"name": TRACKER_FILENAME, "parents": [folder_id]}
+        drive.files().create(body=meta, media_body=media).execute()
+
+
+# ─── BigQuery helpers ─────────────────────────────────────────────────────────
+
+# Schema mirrors the parsed record fields from parse_sponte_xls.py
+BQ_SCHEMA = [
+    bigquery.SchemaField("loaded_at",           "TIMESTAMP"),
+    bigquery.SchemaField("source_filename",      "STRING"),
+    bigquery.SchemaField("branch",               "STRING"),
+    bigquery.SchemaField("semester",             "STRING"),
+    bigquery.SchemaField("event_date",           "DATE"),
+    bigquery.SchemaField("tipo",                 "STRING"),   # Rescisão / Trancamento / etc.
+    bigquery.SchemaField("student_name",         "STRING"),
+    bigquery.SchemaField("contract_id",          "INTEGER"),
+    bigquery.SchemaField("parcel",               "INTEGER"),
+    bigquery.SchemaField("modality",             "STRING"),
+    bigquery.SchemaField("class_name",           "STRING"),
+    bigquery.SchemaField("teacher",              "STRING"),
+    bigquery.SchemaField("stage_full",           "STRING"),
+    bigquery.SchemaField("stage",                "STRING"),
+    bigquery.SchemaField("reason",               "STRING"),
+    bigquery.SchemaField("attendant",            "STRING"),
+    bigquery.SchemaField("is_turma_nao_formou",  "BOOLEAN"),
+    bigquery.SchemaField("is_real_churn",        "BOOLEAN"),
+]
+
+
+def ensure_table_exists(bq):
+    """Create the BigQuery table if it doesn't exist yet."""
+    table_ref = f"{GCP_PROJECT}.{BQ_DATASET}.{BQ_TABLE}"
+    try:
+        bq.get_table(table_ref)
+        print(f"  ✅ Table {BQ_TABLE} exists")
+    except Exception:
+        table = bigquery.Table(table_ref, schema=BQ_SCHEMA)
+        # Partition by event_date for efficient date-range queries
+        table.time_partitioning = bigquery.TimePartitioning(
+            type_=bigquery.TimePartitioningType.DAY,
+            field="event_date"
+        )
+        bq.create_table(table)
+        print(f"  ✅ Created table {BQ_TABLE}")
+
+
+def delete_existing_records(bq, branch, semester):
+    """
+    Delete all records for this branch+semester before inserting fresh ones.
+    This makes the load idempotent — uploading the same file twice is safe.
+
+    ⚠️  RISK: This deletes ALL records for the branch+semester, not just the
+    ones from this file. That's intentional — each weekly upload is the
+    authoritative full picture for that branch's semester.
+    """
+    query = f"""
+        DELETE FROM `{GCP_PROJECT}.{BQ_DATASET}.{BQ_TABLE}`
+        WHERE branch = @branch
+          AND semester = @semester
+    """
+    job_config = bigquery.QueryJobConfig(
+        query_parameters=[
+            bigquery.ScalarQueryParameter("branch",   "STRING", branch),
+            bigquery.ScalarQueryParameter("semester", "STRING", semester),
+        ]
+    )
+    bq.query(query, job_config=job_config).result()
+    print(f"  🗑️  Cleared existing records for {branch} / {semester}")
+
+
+def insert_records(bq, records, source_filename):
+    """Insert parsed records into BigQuery."""
+    if not records:
+        print("  ⚠️  No records to insert")
+        return 0
+
+    now = datetime.now(timezone.utc).isoformat()
+    rows = []
+    for r in records:
+        rows.append({
+            "loaded_at":          now,
+            "source_filename":    source_filename,
+            "branch":             r["branch"],
+            "semester":           r["semester"] or "",
+            "event_date":         r["event_date"],
+            "tipo":               r["tipo"],
+            "student_name":       r["student_name"],
+            "contract_id":        r["contract_id"],
+            "parcel":             r["parcel"],
+            "modality":           r["modality"],
+            "class_name":         r["class_name"] or "",
+            "teacher":            r["teacher"] or "",
+            "stage_full":         r["stage_full"] or "",
+            "stage":              r["stage"] or "",
+            "reason":             r["reason"],
+            "attendant":          r["attendant"],
+            "is_turma_nao_formou": r["is_turma_nao_formou"],
+            "is_real_churn":      r["is_real_churn"],
+        })
+
+    table_ref = f"{GCP_PROJECT}.{BQ_DATASET}.{BQ_TABLE}"
+    errors = bq.insert_rows_json(table_ref, rows)
+    if errors:
+        raise RuntimeError(f"BigQuery insert errors: {errors}")
+
+    print(f"  ✅ Inserted {len(rows)} records into {BQ_TABLE}")
+    return len(rows)
+
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+def main():
+    print("=" * 60)
+    print(f"  Cancellations XLS → BigQuery")
+    print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 60)
+
+    drive, bq = build_google_clients()
+    ensure_table_exists(bq)
+
+    # Load tracker
+    tracker, tracker_file_id = load_tracker(drive, DRIVE_FOLDER_ID)
+    print(f"\n📋 Previously processed files: {len(tracker)}")
+
+    # List XLS files in Drive folder
+    xls_files = [f for f in list_xls_files(drive, DRIVE_FOLDER_ID)
+                 if f["name"] != TRACKER_FILENAME]
+    print(f"📁 XLS files in Drive folder: {len(xls_files)}")
+
+    new_files   = [f for f in xls_files if f["id"] not in tracker]
+    skip_files  = [f for f in xls_files if f["id"] in tracker]
+
+    print(f"  → New (to process): {len(new_files)}")
+    print(f"  → Already done:     {len(skip_files)}")
+
+    if not new_files:
+        print("\n✅ Nothing new to process. Exiting.")
+        return
+
+    total_records = 0
+
+    for file_info in new_files:
+        file_id   = file_info["id"]
+        file_name = file_info["name"]
+        print(f"\n📄 Processing: {file_name}")
+
+        try:
+            # Download to temp file (parse_xls needs a path, not bytes)
+            raw_bytes = download_file(drive, file_id)
+            with tempfile.NamedTemporaryFile(suffix=".xls", delete=False) as tmp:
+                tmp.write(raw_bytes)
+                tmp_path = tmp.name
+
+            # Parse
+            records = parse_xls(tmp_path, branch_override=BRANCH_OVERRIDE or None)
+            os.unlink(tmp_path)
+
+            if not records:
+                print(f"  ⚠️  No records parsed from {file_name} — skipping")
+                tracker[file_id] = {
+                    "filename":   file_name,
+                    "processed":  datetime.now(timezone.utc).isoformat(),
+                    "records":    0,
+                    "status":     "empty",
+                }
+                continue
+
+            branch   = records[0]["branch"]
+            semester = records[0]["semester"]
+            print(f"  Branch: {branch} | Semester: {semester} | Records: {len(records)}")
+
+            # Delete existing + insert fresh
+            delete_existing_records(bq, branch, semester)
+            n = insert_records(bq, records, file_name)
+            total_records += n
+
+            # Mark as processed
+            tracker[file_id] = {
+                "filename":   file_name,
+                "processed":  datetime.now(timezone.utc).isoformat(),
+                "records":    n,
+                "branch":     branch,
+                "semester":   semester,
+                "status":     "ok",
+            }
+
+        except Exception as e:
+            print(f"  ❌ Error processing {file_name}: {e}")
+            tracker[file_id] = {
+                "filename":  file_name,
+                "processed": datetime.now(timezone.utc).isoformat(),
+                "records":   0,
+                "status":    f"error: {e}",
+            }
+            # Don't re-raise — continue with other files
+
+        time.sleep(0.5)
+
+    # Save tracker back to Drive
+    save_tracker(drive, DRIVE_FOLDER_ID, tracker, tracker_file_id)
+    print(f"\n✅ Tracker saved. Total records loaded: {total_records}")
+
+
+if __name__ == "__main__":
+    main()
