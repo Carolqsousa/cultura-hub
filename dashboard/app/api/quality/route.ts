@@ -31,6 +31,14 @@ function esc(val: string) {
   return val.replace(/'/g, "''");
 }
 
+// Maps dropdown value → cancellations_xls branch code
+const BRANCH_TO_XLS: Record<string, string> = {
+  "Boa Viagem": "BV",
+  "Young":      "YG",
+  "Setubal":    "SET",
+  "Natal":      "CI Lagoa Nova",
+};
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const branch    = searchParams.get("branch")   || "all";
@@ -50,6 +58,8 @@ export async function GET(req: NextRequest) {
   const bfLg        = branch !== "all" ? `AND lg.branch = '${b}'` : "";
   const bfTc        = branch !== "all" ? `AND tc.branch = '${b}'` : "";
   const bfPlain     = branch !== "all" ? `AND branch = '${b}'`    : "";
+  const xlsBranch    = BRANCH_TO_XLS[branch] || branch;
+  const bfXls        = branch !== "all" ? `AND branch = '${esc(xlsBranch)}'` : "";
 
   try {
     // ── 1. RETENTION BY STAGE ─────────────────────────────────────────────
@@ -249,7 +259,7 @@ export async function GET(req: NextRequest) {
             COUNT(*)               AS total_cancels,
             COUNTIF(is_real_churn) AS real_churn
           FROM \`${P}.${D}.cancellations_xls\`
-          WHERE semester = '${sem}' ${bfPlain}
+          WHERE semester = '${sem}' ${bfXls}
           GROUP BY teacher
         )
       SELECT
@@ -280,7 +290,7 @@ export async function GET(req: NextRequest) {
         is_real_churn,
         is_turma_nao_formou
       FROM \`${P}.${D}.cancellations_xls\`
-      WHERE semester = '${sem}' ${bfPlain}
+      WHERE semester = '${sem}' ${bfXls}
       ORDER BY event_date DESC
     `;
 
@@ -291,7 +301,7 @@ export async function GET(req: NextRequest) {
         COUNT(*)               AS count,
         COUNTIF(is_real_churn) AS real_churn
       FROM \`${P}.${D}.cancellations_xls\`
-      WHERE semester = '${sem}' ${bfPlain}
+      WHERE semester = '${sem}' ${bfXls}
       GROUP BY reason
       ORDER BY count DESC
     `;
