@@ -1,16 +1,20 @@
+# Credentials — NEVER commit these
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!next.config.json
+!postcss.config.json
+
 # Python
 __pycache__/
 *.pyc
 .env
-.venv/
 venv/
 
-# Node / Next.js
+# Node
 node_modules/
 .next/
-dashboard/.env.local
 
-# GCP credentials — never commit these
-*service-account*.json
-gcp-key*.json
-credentials.json
+# OS
+.DS_Store
