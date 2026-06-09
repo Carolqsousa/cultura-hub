@@ -283,7 +283,7 @@ def main():
 
     # List XLS files in Drive folder
     xls_files = [f for f in list_xls_files(drive, DRIVE_FOLDER_ID)
-                 if f["name"] != TRACKER_FILENAME]
+                 if f["name"] != "processed_files.json"]
     print(f"📁 XLS files in Drive folder: {len(xls_files)}")
 
     new_files   = [f for f in xls_files if f["id"] not in tracker]
