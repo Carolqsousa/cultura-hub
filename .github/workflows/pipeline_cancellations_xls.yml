@@ -51,3 +51,9 @@ jobs:
           DRIVE_CANCELLATIONS_FOLDER_ID: ${{ secrets.DRIVE_CANCELLATIONS_FOLDER_ID }}
         run: |
           python pipeline/sponte/cancellations_xls.py
+          - name: Debug Drive access
+        env:
+          GCP_CREDENTIALS_JSON:          ${{ secrets.GCP_CREDENTIALS_JSON }}
+          DRIVE_CANCELLATIONS_FOLDER_ID: ${{ secrets.DRIVE_CANCELLATIONS_FOLDER_ID }}
+        run: |
+          python pipeline/sponte/debug_drive.py
