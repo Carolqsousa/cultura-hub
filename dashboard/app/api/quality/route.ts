@@ -46,15 +46,14 @@ const XLS_BRANCH_NORMALIZE = `
   END
 `;
 
-// Full stage regex — PSTA before STA, IE_FRA last (rare)
-// TTM is normalised to TEA in the SELECT so both appear as one stage
-const STAGE_REGEX = `r'(?i)(ADV|BGN|ELE|INT|MST|PRI|TEA|TEE|UPP|VAN|JUN|PSTA|STA|NUR|YNG|TTM|IE_FRA)'`;
+// Full stage regex — longer patterns MUST come before shorter ones:
+//   PSTA before STA, PTEE before TEE, IE_FRA before nothing
+// TTM → TEA (Tea Time), IE_FRA → FRA (Francês)
+const STAGE_REGEX = `r'(?i)(ADV|BGN|ELE|INT|MST|PRI|PTEE|TEA|TEE|UPP|VAN|JUN|PSTA|STA|NUR|YNG|TTM|IE_FRA)'`;
 
-// Normalise TTM → TEA so Tea Time classes merge with TEA stage
 const STAGE_NORMALIZE = `
-  CASE REGEXP_EXTRACT(class_name, ${STAGE_REGEX})
+  CASE UPPER(REGEXP_EXTRACT(class_name, ${STAGE_REGEX}))
     WHEN 'TTM'    THEN 'TEA'
-    WHEN 'ie_fra' THEN 'FRA'
     WHEN 'IE_FRA' THEN 'FRA'
     ELSE UPPER(REGEXP_EXTRACT(class_name, ${STAGE_REGEX}))
   END
@@ -95,7 +94,11 @@ export async function GET(req: NextRequest) {
         ),
         latest_att_start AS (
           SELECT student_id, branch,
-            ${STAGE_NORMALIZE.replace(/class_name/g, 'MAX(class_name)')} AS stage
+            CASE UPPER(REGEXP_EXTRACT(MAX(class_name), ${STAGE_REGEX}))
+              WHEN 'TTM'    THEN 'TEA'
+              WHEN 'IE_FRA' THEN 'FRA'
+              ELSE UPPER(REGEXP_EXTRACT(MAX(class_name), ${STAGE_REGEX}))
+            END AS stage
           FROM \`${P}.${D}.attendance\`
           WHERE date = (
             SELECT MAX(date) FROM \`${P}.${D}.attendance\`

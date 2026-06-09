@@ -72,6 +72,7 @@ const STAGE_LABELS: Record<string, string> = {
   INT:    "Intermediate",
   MST:    "Master",
   PRI:    "Pre-Intermediate",
+  PTEE:   "Pre-Teen",
   TEA:    "Tea Time",
   TEE:    "Teen",
   UPP:    "Upper Intermediate",
