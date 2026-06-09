@@ -22,12 +22,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r pipeline/requirements.txt
 
-      - name: Debug Drive access
-        env:
-          GCP_CREDENTIALS_JSON:          ${{ secrets.GCP_CREDENTIALS_JSON }}
-          DRIVE_CANCELLATIONS_FOLDER_ID: ${{ secrets.DRIVE_CANCELLATIONS_FOLDER_ID }}
-        run: |
-          python pipeline/sponte/debug_drive.py
+  
 
       - name: Run pipeline
         env:
