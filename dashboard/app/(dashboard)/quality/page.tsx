@@ -64,6 +64,26 @@ interface QualityData {
 
 const BRANCHES = ["Todas", "Boa Viagem", "Young", "Setubal", "Natal"];
 type Tab = "stage" | "teacher" | "class" | "cancels";
+
+const STAGE_LABELS: Record<string, string> = {
+  ADV:    "Advanced",
+  BGN:    "Beginner",
+  ELE:    "Elementary",
+  INT:    "Intermediate",
+  MST:    "Master",
+  PRI:    "Pre-Intermediate",
+  TEA:    "Tea Time",
+  TEE:    "Teen",
+  UPP:    "Upper Intermediate",
+  VAN:    "Vantage",
+  JUN:    "Junior",
+  STA:    "Stars",
+  PSTA:   "Pre-Stars",
+  NUR:    "Nursery",
+  YNG:    "Young",
+  TTM:    "Tea Time",
+  FRA:    "Francês",
+};
 type SortDir = "asc" | "desc";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -163,7 +183,7 @@ function StageCard({ row }: { row: StageRow }) {
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-bold tracking-widest uppercase text-gray-400">
-          {row.stage}
+          {STAGE_LABELS[row.stage] || row.stage}
         </span>
         <span className={`text-sm font-bold ${retColor(row.retention_pct)}`}>
           {fmtPct(row.retention_pct)}

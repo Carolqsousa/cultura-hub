@@ -36,7 +36,6 @@ const BRANCH_TO_XLS: Record<string, string> = {
   "Natal":      "CI Lagoa Nova",
 };
 
-// Normalizes cancellations_xls branch codes to match the other tables
 const XLS_BRANCH_NORMALIZE = `
   CASE branch
     WHEN 'BV'            THEN 'Boa Viagem'
@@ -44,6 +43,20 @@ const XLS_BRANCH_NORMALIZE = `
     WHEN 'SET'           THEN 'Setubal'
     WHEN 'CI Lagoa Nova' THEN 'Natal'
     ELSE branch
+  END
+`;
+
+// Full stage regex — PSTA before STA, IE_FRA last (rare)
+// TTM is normalised to TEA in the SELECT so both appear as one stage
+const STAGE_REGEX = `r'(?i)(ADV|BGN|ELE|INT|MST|PRI|TEA|TEE|UPP|VAN|JUN|PSTA|STA|NUR|YNG|TTM|IE_FRA)'`;
+
+// Normalise TTM → TEA so Tea Time classes merge with TEA stage
+const STAGE_NORMALIZE = `
+  CASE REGEXP_EXTRACT(class_name, ${STAGE_REGEX})
+    WHEN 'TTM'    THEN 'TEA'
+    WHEN 'ie_fra' THEN 'FRA'
+    WHEN 'IE_FRA' THEN 'FRA'
+    ELSE UPPER(REGEXP_EXTRACT(class_name, ${STAGE_REGEX}))
   END
 `;
 
@@ -68,9 +81,6 @@ export async function GET(req: NextRequest) {
 
   try {
     // ── 1. RETENTION BY STAGE ─────────────────────────────────────────────
-    // Uses attendance for stage enrichment — covers all students including
-    // Format B classes. LEFT JOIN = cohort retention, new enrollments don't
-    // inflate the %.
     const retentionSQL = `
       WITH
         snap_start AS (
@@ -85,8 +95,7 @@ export async function GET(req: NextRequest) {
         ),
         latest_att_start AS (
           SELECT student_id, branch,
-            REGEXP_EXTRACT(MAX(class_name),
-              r'(?i)(ADV|BGN|ELE|INT|MST|PRI|TEA|TEE|UPP|VAN)') AS stage
+            ${STAGE_NORMALIZE.replace(/class_name/g, 'MAX(class_name)')} AS stage
           FROM \`${P}.${D}.attendance\`
           WHERE date = (
             SELECT MAX(date) FROM \`${P}.${D}.attendance\`
@@ -121,21 +130,17 @@ export async function GET(req: NextRequest) {
         CAST(FORMAT_DATE('%Y-%m-%d', (SELECT d FROM snap_end))   AS STRING) AS snap_end_date
       FROM start_students st
       LEFT JOIN end_students en USING (student_id, branch)
+      WHERE st.stage != '?'
       GROUP BY st.stage
       ORDER BY st.stage
     `;
 
     // ── 2. BY CLASS ───────────────────────────────────────────────────────
-    // Cancellations joined by:
-    //   1. Normalizing XLS branch codes → full branch names
-    //   2. Matching on class code (before " - ") + normalized branch
-    // This handles both minor name variations and cross-branch collisions.
     const byClassSQL = `
       WITH
         latest_grades AS (
           SELECT class_id, class_name, branch,
-            REGEXP_EXTRACT(class_name,
-              r'(?i)(ADV|BGN|ELE|INT|MST|PRI|TEA|TEE|UPP|VAN)') AS stage,
+            ${STAGE_NORMALIZE} AS stage,
             MAX(date) AS grade_date
           FROM \`${P}.${D}.grades\`
           WHERE date <= '${e}'
