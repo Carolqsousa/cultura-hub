@@ -47,9 +47,9 @@ const XLS_BRANCH_NORMALIZE = `
 `;
 
 // Full stage regex — longer patterns MUST come before shorter ones:
-//   PSTA before STA, PTEE before TEE, IE_FRA before nothing
-// TTM → TEA (Tea Time), IE_FRA → FRA (Francês)
-const STAGE_REGEX = `r'(?i)(ADV|BGN|ELE|INT|MST|PRI|PTEE|TEA|TEE|UPP|VAN|JUN|PSTA|STA|NUR|YNG|TTM|IE_FRA)'`;
+//   PSTA before STA, PTEE before TEE, CPSTA before PSTA, IE_FRA last
+// TTM → TEA, IE_FRA → FRA, CPSTA → PSTA, TOD = Toddler
+const STAGE_REGEX = `r'(?i)(ADV|BGN|ELE|INT|MST|PTEE|TEE|TEA|UPP|VAN|JUN|CPSTA|PSTA|STA|NUR|YNG|TTM|IE_FRA|PRI|TOD)'`;
 
 const STAGE_NORMALIZE = `
   CASE UPPER(REGEXP_EXTRACT(class_name, ${STAGE_REGEX}))
@@ -286,7 +286,12 @@ export async function GET(req: NextRequest) {
     const cancelsSQL = `
       SELECT
         FORMAT_DATE('%Y-%m-%d', event_date) AS event_date,
-        branch, student_name, class_name, stage,
+        branch, student_name, class_name,
+        CASE UPPER(REGEXP_EXTRACT(class_name, ${STAGE_REGEX}))
+          WHEN 'TTM'    THEN 'TEA'
+          WHEN 'IE_FRA' THEN 'FRA'
+          ELSE UPPER(REGEXP_EXTRACT(class_name, ${STAGE_REGEX}))
+        END AS stage,
         teacher, reason, attendant,
         is_real_churn, is_turma_nao_formou
       FROM \`${P}.${D}.cancellations_xls\`

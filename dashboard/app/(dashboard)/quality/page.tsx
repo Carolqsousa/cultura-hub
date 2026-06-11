@@ -76,6 +76,7 @@ const STAGE_LABELS: Record<string, string> = {
   PTEE:   "Pre-Teen",
   TEA:    "Tea Time",
   TEE:    "Teen",
+  TOD:    "Toddler",
   UPP:    "Upper Intermediate",
   VAN:    "Vantage",
   JUN:    "Junior",
@@ -85,6 +86,7 @@ const STAGE_LABELS: Record<string, string> = {
   YNG:    "Young",
   TTM:    "Tea Time",
   FRA:    "Francês",
+  CPSTA:  "Cultura Plus",
 };
 type SortDir = "asc" | "desc";
 
