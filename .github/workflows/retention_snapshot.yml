@@ -1,0 +1,52 @@
+# .github/workflows/retention_snapshot.yml
+#
+# Runs daily at 08:00 BRT (11:00 UTC) and captures retention snapshots
+# on the configured milestone dates:
+#
+#   2026.1:  Feb 1 (start), Mar 15 (mid), Jun 29 (end)
+#   2026.2:  Aug 1 (start), Sep 15 (mid), Dec 30 (end)
+#
+# On non-milestone dates the script exits in ~3 seconds with no action.
+#
+# RERUNNING: safe to rerun — the pipeline deletes existing rows for the
+# same semester + snapshot_date before inserting, so reruns are idempotent.
+#
+# ADDING FUTURE SEMESTERS: edit the SEMESTERS list in retention_snapshot.py
+
+name: Retention Snapshot
+
+on:
+  schedule:
+    # 11:00 UTC = 08:00 BRT
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+    inputs:
+      override_date:
+        description: 'Override today date (YYYY-MM-DD) — for backfilling or testing'
+        required: false
+        default: ''
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Run snapshot
+        env:
+          GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
+          GCP_PROJECT_ID:       ${{ secrets.GCP_PROJECT_ID }}
+          OVERRIDE_DATE:        ${{ github.event.inputs.override_date }}
+        run: |
+          python pipeline/sponte/retention_snapshot.py
