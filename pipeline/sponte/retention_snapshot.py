@@ -50,6 +50,7 @@ SEMESTERS = [
         "snapshots": [
             {"date": "2026-02-01", "type": "start"},
             {"date": "2026-03-15", "type": "mid"},
+            {"date": "2026-06-11", "type": "test"},   # ← temp test, remove after
             {"date": "2026-06-29", "type": "end"},
         ],
     },
