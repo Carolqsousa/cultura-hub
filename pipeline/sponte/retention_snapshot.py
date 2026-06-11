@@ -470,10 +470,13 @@ def load_rows(bq, rows, semester, snapshot_date, snapshot_type, is_estimated, ac
 
     table_ref = f"{GCP_PROJECT}.{BQ_DATASET}.{BQ_TABLE}"
 
-    # Delete existing rows for this semester + snapshot_date to allow reruns
+    # Delete existing rows for this semester + snapshot_date + dimension
+    # to allow reruns without wiping other dimensions
     bq.query(f"""
         DELETE FROM `{table_ref}`
-        WHERE semester = '{semester}' AND snapshot_date = '{snapshot_date}'
+        WHERE semester = '{semester}'
+          AND snapshot_date = '{snapshot_date}'
+          AND dimension = '{rows[0]['dimension']}'
     """).result()
 
     job = bq.load_table_from_json(
