@@ -62,7 +62,7 @@ const STAGE_NORMALIZE = `
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const branch    = searchParams.get("branch")   || "all";
-  const startDate = searchParams.get("start")    || "2026-04-29";
+  const startDate = searchParams.get("start")    || "2026-02-01";
   const endDate   = searchParams.get("end")      || new Date().toISOString().slice(0, 10);
   const semester  = searchParams.get("semester") || "2026.1";
 
@@ -80,19 +80,19 @@ export async function GET(req: NextRequest) {
 
   try {
     // ── 1. RETENTION BY STAGE ─────────────────────────────────────────────
+    // quant_atual  = current active students per stage (from students snapshot)
+    // real_churn   = rescissions from cancellations_xls (full semester)
+    // quant_anterior = quant_atual + real_churn (reconstructed semester start)
+    // retention_pct  = quant_atual / quant_anterior × 100
+    // This covers all rescissions including those before the pipeline started.
     const retentionSQL = `
       WITH
-        snap_start AS (
-          SELECT MAX(date) AS d
-          FROM \`${P}.${D}.students\`
-          WHERE date <= '${s}'
-        ),
         snap_end AS (
           SELECT MAX(date) AS d
           FROM \`${P}.${D}.students\`
           WHERE date <= '${e}'
         ),
-        latest_att_start AS (
+        latest_att AS (
           SELECT student_id, branch,
             CASE UPPER(REGEXP_EXTRACT(MAX(class_name), ${STAGE_REGEX}))
               WHEN 'TTM'    THEN 'TEA'
@@ -102,40 +102,51 @@ export async function GET(req: NextRequest) {
           FROM \`${P}.${D}.attendance\`
           WHERE date = (
             SELECT MAX(date) FROM \`${P}.${D}.attendance\`
-            WHERE date <= '${s}'
+            WHERE date <= '${e}'
           )
           GROUP BY student_id, branch
         ),
-        start_students AS (
+        current_students AS (
           SELECT s.student_id, s.branch,
             COALESCE(a.stage, '?') AS stage
           FROM \`${P}.${D}.students\` s
-          LEFT JOIN latest_att_start a
+          LEFT JOIN latest_att a
             ON a.student_id = s.student_id AND a.branch = s.branch
-          WHERE s.date = (SELECT d FROM snap_start)
-          ${bfStudents}
-        ),
-        end_students AS (
-          SELECT s.student_id, s.branch
-          FROM \`${P}.${D}.students\` s
           WHERE s.date = (SELECT d FROM snap_end)
           ${bfStudents}
+        ),
+        churn_by_stage AS (
+          SELECT
+            CASE UPPER(REGEXP_EXTRACT(class_name, ${STAGE_REGEX}))
+              WHEN 'TTM'    THEN 'TEA'
+              WHEN 'IE_FRA' THEN 'FRA'
+              ELSE UPPER(REGEXP_EXTRACT(class_name, ${STAGE_REGEX}))
+            END AS stage,
+            COUNT(*) AS real_churn
+          FROM \`${P}.${D}.cancellations_xls\`
+          WHERE semester = '${sem}'
+            AND is_real_churn = true
+            AND event_date BETWEEN '${s}' AND '${e}'
+            ${bfXls}
+          GROUP BY stage
         )
       SELECT
-        st.stage,
-        COUNT(DISTINCT st.student_id) AS quant_anterior,
-        COUNT(DISTINCT CASE WHEN en.student_id IS NOT NULL THEN st.student_id END) AS quant_atual,
+        cs.stage,
+        COUNT(DISTINCT cs.student_id)                    AS quant_atual,
+        COUNT(DISTINCT cs.student_id)
+          + COALESCE(MAX(ch.real_churn), 0)              AS quant_anterior,
+        COALESCE(MAX(ch.real_churn), 0)                  AS real_churn,
         ROUND(SAFE_DIVIDE(
-          COUNT(DISTINCT CASE WHEN en.student_id IS NOT NULL THEN st.student_id END),
-          COUNT(DISTINCT st.student_id)
+          COUNT(DISTINCT cs.student_id),
+          COUNT(DISTINCT cs.student_id) + COALESCE(MAX(ch.real_churn), 0)
         ) * 100, 1) AS retention_pct,
-        CAST(FORMAT_DATE('%Y-%m-%d', (SELECT d FROM snap_start)) AS STRING) AS snap_start_date,
-        CAST(FORMAT_DATE('%Y-%m-%d', (SELECT d FROM snap_end))   AS STRING) AS snap_end_date
-      FROM start_students st
-      LEFT JOIN end_students en USING (student_id, branch)
-      WHERE st.stage != '?'
-      GROUP BY st.stage
-      ORDER BY st.stage
+        CAST(FORMAT_DATE('%Y-%m-%d', (SELECT d FROM snap_end)) AS STRING) AS snap_start_date,
+        CAST(FORMAT_DATE('%Y-%m-%d', (SELECT d FROM snap_end)) AS STRING) AS snap_end_date
+      FROM current_students cs
+      LEFT JOIN churn_by_stage ch USING (stage)
+      WHERE cs.stage != '?'
+      GROUP BY cs.stage
+      ORDER BY cs.stage
     `;
 
     // ── 2. BY CLASS ───────────────────────────────────────────────────────
@@ -183,6 +194,7 @@ export async function GET(req: NextRequest) {
             COUNTIF(is_real_churn) AS real_churn
           FROM \`${P}.${D}.cancellations_xls\`
           WHERE semester = '${sem}'
+            AND event_date BETWEEN '${s}' AND '${e}'
           GROUP BY class_code, branch
         )
       SELECT
@@ -253,7 +265,9 @@ export async function GET(req: NextRequest) {
             COUNT(*)               AS total_cancels,
             COUNTIF(is_real_churn) AS real_churn
           FROM \`${P}.${D}.cancellations_xls\`
-          WHERE semester = '${sem}' ${bfXls}
+          WHERE semester = '${sem}'
+            AND event_date BETWEEN '${s}' AND '${e}'
+            ${bfXls}
           GROUP BY teacher
         )
       SELECT
@@ -276,7 +290,9 @@ export async function GET(req: NextRequest) {
         teacher, reason, attendant,
         is_real_churn, is_turma_nao_formou
       FROM \`${P}.${D}.cancellations_xls\`
-      WHERE semester = '${sem}' ${bfXls}
+      WHERE semester = '${sem}'
+        AND event_date BETWEEN '${s}' AND '${e}'
+        ${bfXls}
       ORDER BY event_date DESC
     `;
 
@@ -287,7 +303,9 @@ export async function GET(req: NextRequest) {
         COUNT(*)               AS count,
         COUNTIF(is_real_churn) AS real_churn
       FROM \`${P}.${D}.cancellations_xls\`
-      WHERE semester = '${sem}' ${bfXls}
+      WHERE semester = '${sem}'
+        AND event_date BETWEEN '${s}' AND '${e}'
+        ${bfXls}
       GROUP BY reason
       ORDER BY count DESC
     `;
@@ -300,12 +318,10 @@ export async function GET(req: NextRequest) {
       bqQuery(reasonsSQL),
     ]);
 
-    const snapDates = byStage[0]
-      ? {
-          start: String((byStage[0] as any).snap_start_date || startDate),
-          end:   String((byStage[0] as any).snap_end_date   || endDate),
-        }
-      : { start: startDate, end: endDate };
+    const snapDates = {
+      start: startDate,
+      end:   endDate,
+    };
 
     return NextResponse.json({
       snapDates, byStage, byClass, byTeacher, cancels, reasons,

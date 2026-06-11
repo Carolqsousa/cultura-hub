@@ -9,6 +9,7 @@ interface StageRow {
   stage: string;
   quant_anterior: number;
   quant_atual: number;
+  real_churn: number;
   retention_pct: number | null;
 }
 
@@ -192,9 +193,9 @@ function StageCard({ row }: { row: StageRow }) {
       </div>
       <RetBar pct={row.retention_pct} />
       <div className="flex justify-between text-xs text-gray-500 pt-1 border-t border-gray-50 mt-1">
+        <span>Atual <span className="font-semibold text-gray-700">{row.quant_atual}</span></span>
         <span>Início <span className="font-semibold text-gray-700">{row.quant_anterior}</span></span>
-        <span>Agora <span className="font-semibold text-gray-700">{row.quant_atual}</span></span>
-        <span>Saídas <span className="font-semibold text-red-500">{row.quant_anterior - row.quant_atual}</span></span>
+        <span>Saídas <span className="font-semibold text-red-500">{row.real_churn}</span></span>
       </div>
     </div>
   );
@@ -246,7 +247,7 @@ export default function QualityPage() {
   const [error, setError]     = useState<string | null>(null);
 
   const [branch, setBranch]   = useState("Todas");
-  const [start, setStart]     = useState("2026-04-29");
+  const [start, setStart]     = useState("2026-02-01");
   const [end, setEnd]         = useState(() => new Date().toISOString().slice(0, 10));
   const [tab, setTab]         = useState<Tab>("stage");
   const [search, setSearch]   = useState("");
@@ -277,12 +278,12 @@ export default function QualityPage() {
 
   const kpis = useMemo(() => {
     if (!data) return null;
-    const stages   = data.byStage;
-    const anterior = stages.reduce((s, r) => s + r.quant_anterior, 0);
-    const atual    = stages.reduce((s, r) => s + r.quant_atual, 0);
-    const retPct   = anterior > 0 ? Math.round(atual / anterior * 1000) / 10 : null;
-    const freqs    = data.byClass.map(r => r.avg_freq).filter((v): v is number => v != null);
-    const avgFreq  = freqs.length ? Math.round(freqs.reduce((a, b) => a + b, 0) / freqs.length * 10) / 10 : null;
+    const stages      = data.byStage;
+    const atual       = stages.reduce((s, r) => s + r.quant_atual, 0);
+    const anterior    = stages.reduce((s, r) => s + r.quant_anterior, 0);
+    const retPct      = anterior > 0 ? Math.round(atual / anterior * 1000) / 10 : null;
+    const freqs       = data.byClass.map(r => r.avg_freq).filter((v): v is number => v != null);
+    const avgFreq     = freqs.length ? Math.round(freqs.reduce((a, b) => a + b, 0) / freqs.length * 10) / 10 : null;
     const totalCancel = data.cancels.length;
     const realChurn   = data.cancels.filter(r => r.is_real_churn).length;
     return { anterior, atual, retPct, avgFreq, totalCancel, realChurn };
@@ -375,9 +376,11 @@ export default function QualityPage() {
       {/* Snapshot notice */}
       {data?.snapDates && (
         <p className="text-xs text-gray-400">
-          Retenção comparando snapshots:{" "}
-          <span className="font-medium text-gray-600">{data.snapDates.start}</span>{" → "}
+          Período analisado:{" "}
+          <span className="font-medium text-gray-600">{data.snapDates.start}</span>
+          {" → "}
           <span className="font-medium text-gray-600">{data.snapDates.end}</span>
+          {" · "}Alunos ativos hoje + rescisões no período
         </p>
       )}
 
