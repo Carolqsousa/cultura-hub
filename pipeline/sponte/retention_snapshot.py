@@ -41,30 +41,42 @@ BQ_DATASET     = "cultura_hub"
 BQ_TABLE       = "retention_history"
 GCP_CREDS_JSON = os.environ["GCP_CREDENTIALS_JSON"]
 
-# Semester definitions — add future semesters here
-SEMESTERS = [
-    {
-        "semester":   "2026.1",
-        "start_date": "2026-02-01",
-        "end_date":   "2026-06-29",
-        "snapshots": [
-            {"date": "2026-02-01", "type": "start"},
-            {"date": "2026-03-15", "type": "mid"},
-            {"date": "2026-06-11", "type": "test"},   # ← temp test, remove after
-            {"date": "2026-06-29", "type": "end"},
-        ],
-    },
-    {
-        "semester":   "2026.2",
-        "start_date": "2026-08-01",
-        "end_date":   "2026-12-30",
-        "snapshots": [
-            {"date": "2026-08-01",  "type": "start"},
-            {"date": "2026-09-15",  "type": "mid"},
-            {"date": "2026-12-30",  "type": "end"},
-        ],
-    },
-]
+# ─── Semester generation ──────────────────────────────────────────────────────
+# Generates semester definitions automatically for the next N years.
+# Rules (fixed by Cultura Inglesa calendar):
+#   Semester 1: Feb 1 (start) → Mar 15 (mid) → Jun 29 (end)
+#   Semester 2: Aug 1 (start) → Sep 15 (mid) → Dec 30 (end)
+# Edit the rules here if the calendar ever changes.
+
+def generate_semesters(years_ahead: int = 5) -> list:
+    current_year = date.today().year
+    semesters = []
+    for year in range(current_year, current_year + years_ahead + 1):
+        # Semester 1
+        semesters.append({
+            "semester":   f"{year}.1",
+            "start_date": f"{year}-02-01",
+            "end_date":   f"{year}-06-29",
+            "snapshots": [
+                {"date": f"{year}-02-01", "type": "start"},
+                {"date": f"{year}-03-15", "type": "mid"},
+                {"date": f"{year}-06-29", "type": "end"},
+            ],
+        })
+        # Semester 2
+        semesters.append({
+            "semester":   f"{year}.2",
+            "start_date": f"{year}-08-01",
+            "end_date":   f"{year}-12-30",
+            "snapshots": [
+                {"date": f"{year}-08-01",  "type": "start"},
+                {"date": f"{year}-09-15",  "type": "mid"},
+                {"date": f"{year}-12-30",  "type": "end"},
+            ],
+        })
+    return semesters
+
+SEMESTERS = generate_semesters(years_ahead=5)
 
 # Stage regex — same as quality route
 STAGE_REGEX = r"r'(?i)(ADV|BGN|ELE|INT|MST|PTEE|TEE|TEA|UPP|VAN|JUN|CPSTA|PSTA|STA|NUR|YNG|TTM|IE_FRA|PRI|TOD)'"
