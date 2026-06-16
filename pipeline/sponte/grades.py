@@ -30,6 +30,7 @@ from datetime import date
 # ── Phases que usam Formato B ─────────────────────────────────────────────────
 # Identificação é por phase_name (do schedule da turma), não pelo nome da turma
 PHASES_FORMATO_B = {
+    # Format B — avaliações 1/2/3/4 sem médias via API
     "ADVANCED 1 (F)",
     "ADVANCED 2 (F)",
     "MASTERY 1 (F)",
@@ -38,6 +39,28 @@ PHASES_FORMATO_B = {
     "VANTAGE 2 (F)",
     "UPPER INTERMEDIATE 3 (F)",
 }
+
+# ── Phases sem notas (early childhood) ────────────────────────────────────────
+# Pre Stars, Nursery e Toddler não usam avaliações formais no Sponte.
+# A pipeline salva grade_format='NO_GRADE' sem tentar buscar /scores.
+# Prefixes verificados — qualquer phase_name que comece com esses termos
+# é tratada como sem nota.
+NO_GRADE_PREFIXES = (
+    "PRE STARS",
+    "NURSERY",
+    "TODDLER",
+    "CULTURA PLUS - NURSERY",
+    "CULTURA PLUS - PRE STARS",
+    "CULTURA PLUS - PRE-STARS",
+    "THE NEST",
+)
+
+def is_no_grade_phase(phase_name: str) -> bool:
+    """Returns True if this phase doesn't use formal grades."""
+    if not phase_name:
+        return False
+    upper = phase_name.upper()
+    return any(upper.startswith(p) for p in NO_GRADE_PREFIXES)
 
 # test_name exato que a API retorna para Formato A
 # (confirmado pelo teste: 'Progress Check', 'Mid-term', 'Final')
@@ -283,12 +306,34 @@ class GradesFetcher:
                 print(f"    ⚠️  {class_name}: sem phase no schedule, pulando")
                 continue
 
-            is_format_b = phase_name in PHASES_FORMATO_B
+            is_format_b  = phase_name in PHASES_FORMATO_B
+            is_no_grade  = is_no_grade_phase(phase_name or "")
             members     = detalhes.get("members", [])
 
             for aluno in members:
                 student_id = aluno.get("student_id")
                 if not student_id:
+                    continue
+
+                # Early childhood phases (Pre Stars, Nursery, Toddler)
+                # don't use formal grades — save row without calling /scores
+                if is_no_grade:
+                    rows.append({
+                        "date":            run_today,
+                        "branch":          self.branch,
+                        "student_id":      str(student_id),
+                        "class_id":        str(class_id),
+                        "class_name":      class_name,
+                        "phase_name":      phase_name or "",
+                        "grade_format":    "NO_GRADE",
+                        "pc_average":      None,
+                        "midterm_average": None,
+                        "final_average":   None,
+                        "overall_average": None,
+                        "approved":        None,
+                        "provas_entered":  "",
+                        "run_date":        run_today,
+                    })
                     continue
 
                 scores_data = self._post("scores", {
