@@ -118,53 +118,25 @@ class GradesFetcher:
     def _load_phases(self):
         """
         Carrega mapa {phase_name: phase_id} uma vez por run.
-        Também constrói um mapa de fallback negative→positive para fases
-        cujo phase_id negativo retorna scores vazios da API.
 
-        Exemplo:
-          PRE STARS 1 (F) → -42  (negativo, retorna scores vazios)
-          Pre Stars 1     →  12  (positivo, retorna scores reais)
-          Fallback: -42 → 12
+        Por que isso importa:
+          A API /scores exige um phase_id específico da turma.
+          Usar um phase_id genérico (como -1 ou -6) retorna a estrutura
+          errada — ex: uma turma INT retorna AVALIAÇÃO 1/2/3/4 ao invés
+          de PC/Mid/Final, porque -6 aponta para ADVANCED 1 (F).
         """
         data = self._get("phases")
         self._phases_map = {p["name"]: p["phase_id"] for p in data}
 
-        # Build negative→positive fallback map
-        # Match by stripping " (F)" suffix and comparing case-insensitively
-        positive = {p["name"].upper(): p["phase_id"]
-                    for p in data if p["phase_id"] > 0}
-        self._phase_fallback: dict[int, int] = {}
-        for p in data:
-            if p["phase_id"] >= 0:
-                continue
-            # Strip " (F)" suffix to get base name
-            base = p["name"].upper().replace(" (F)", "").strip()
-            # Try exact match first
-            if base in positive:
-                self._phase_fallback[p["phase_id"]] = positive[base]
-                continue
-            # Try partial match (e.g. "PRE STARS 1" matches "PRE STARS 1")
-            for pos_name, pos_id in positive.items():
-                if base == pos_name.replace(" (F)", "").strip():
-                    self._phase_fallback[p["phase_id"]] = pos_id
-                    break
-
     def _resolve_phase(self, detalhes: dict) -> tuple[str | None, int | None]:
         """
         Extrai phase_name e phase_id do schedule da turma.
-        Se o phase_id for negativo e tiver um positivo equivalente no
-        fallback map, usa o positivo — retorna scores reais da API.
         Retorna (None, None) se a turma não tiver phase no schedule.
         """
         for s in detalhes.get("schedule", []):
             if s.get("phase"):
                 name = s["phase"]
                 pid  = self._phases_map.get(name)
-                if pid is not None and pid < 0:
-                    # Try to resolve to positive phase_id
-                    pos_pid = getattr(self, "_phase_fallback", {}).get(pid)
-                    if pos_pid:
-                        return name, pos_pid
                 return name, pid
         return None, None
 
