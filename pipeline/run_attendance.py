@@ -64,7 +64,8 @@ def main():
     print(f"\n=== Concluído: {total} rows | {len(errors)} erros ===")
     if errors:
         print(f"  Branches com erro: {errors}")
-        sys.exit(1)
+        if len(errors) == len(BRANCHES):
+        sys.exit(1)  # All branches failed — something is seriously wrong
 
 
 if __name__ == "__main__":

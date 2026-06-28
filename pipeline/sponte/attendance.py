@@ -43,7 +43,7 @@ class AttendanceFetcher:
         self._phases_map: dict[str, int] = {}
 
     def _get(self, endpoint: str):
-        r = requests.get(f"{self.base_url}/{endpoint}", headers=self.headers, timeout=30)
+        r = requests.get(f"{self.base_url}/{endpoint}", headers=self.headers, timeout=60)
         r.raise_for_status()
         return r.json()
 
@@ -52,7 +52,7 @@ class AttendanceFetcher:
             f"{self.base_url}/{endpoint}",
             headers=self.headers,
             json=payload,
-            timeout=30,
+            timeout=60,
         )
         return r.json() if r.status_code == 200 else None
 
@@ -80,7 +80,7 @@ class AttendanceFetcher:
                 "start_date": self.start_date,
                 "end_date":   self.end_date,
             },
-            timeout=30,
+            timeout=60,
         )
         if r.status_code != 200:
             return []
