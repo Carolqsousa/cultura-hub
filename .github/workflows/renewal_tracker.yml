@@ -1,0 +1,47 @@
+# .github/workflows/renewal_tracker.yml
+#
+# Tracks student renewal status across semester transitions.
+# Runs daily at 13h BRT (after retention_snapshot at 12h BRT).
+#
+# Auto-detects when we're in a renewal tracking window (from semester end
+# date through 60 days into the next semester). Outside that window it
+# exits in a few seconds doing nothing.
+#
+# This works forever without edits — semester dates are calculated from
+# the fixed calendar rules (Feb 1/Jun 29, Aug 1/Dec 30) for any year.
+
+name: Renewal Tracker
+
+on:
+  schedule:
+    # 16:00 UTC = 13:00 BRT
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Run renewal tracker
+        env:
+          GCP_CREDENTIALS_JSON:          ${{ secrets.GCP_CREDENTIALS_JSON }}
+          GCP_PROJECT_ID:                ${{ secrets.GCP_PROJECT_ID }}
+          SPONTE_API_KEY_BOA_VIAGEM:     ${{ secrets.SPONTE_API_KEY_BOA_VIAGEM }}
+          SPONTE_API_KEY_YOUNG:          ${{ secrets.SPONTE_API_KEY_YOUNG }}
+          SPONTE_API_KEY_SETUBAL:        ${{ secrets.SPONTE_API_KEY_SETUBAL }}
+          SPONTE_API_KEY_NATAL:          ${{ secrets.SPONTE_API_KEY_NATAL }}
+        run: |
+          python pipeline/sponte/renewal_tracker.py
