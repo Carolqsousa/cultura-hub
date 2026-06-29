@@ -65,7 +65,12 @@ def main():
     if errors:
         print(f"  Branches com erro: {errors}")
         if len(errors) == len(BRANCHES):
-        sys.exit(1)  # All branches failed — something is seriously wrong
+            # All branches failed — something is seriously wrong
+            sys.exit(1)
+        else:
+            # Partial failure — some branches ok, don't fail CI
+            print(f"  ⚠️  Partial failure — {len(BRANCHES) - len(errors)} branches OK")
+            sys.exit(0)
 
 
 if __name__ == "__main__":
