@@ -43,16 +43,23 @@ def fetch(sponte_client) -> list[dict]:
             monthly_value    = _safe_float(reg.get("monthly_value") or reg.get("value"))
             discount_percent = _safe_float(reg.get("discount_percent") or reg.get("discount"))
 
+        # Capture all class_ids from registrations — used to detect renewal
+        # into next semester even when that class is "Em formação" (not yet open)
+        registered_class_ids = ",".join(
+            str(r.get("class_id")) for r in registrations if r.get("class_id")
+        )
+
         rows.append({
-            "date":             today,
-            "branch":           branch,
-            "student_id":       str(student_id),
-            "name":             raw.get("name") or raw.get("student_name") or "",
-            "status":           status,
-            "discount_percent": discount_percent,
-            "monthly_value":    monthly_value,
-            "class_id":         None,
-            "teacher":          None,
+            "date":                  today,
+            "branch":                branch,
+            "student_id":            str(student_id),
+            "name":                  raw.get("name") or raw.get("student_name") or "",
+            "status":                status,
+            "discount_percent":      discount_percent,
+            "monthly_value":         monthly_value,
+            "class_id":              None,
+            "teacher":               None,
+            "registered_class_ids":  registered_class_ids,
         })
 
         time.sleep(0.05)
