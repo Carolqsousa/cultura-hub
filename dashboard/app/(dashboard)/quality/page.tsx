@@ -289,7 +289,13 @@ export default function QualityPage() {
     const m: Record<string, number> = { Renovado: 0, Pendente: 0, Cancelado: 0 };
     renewalData.summary.forEach(r => { m[r.status] = r.students; });
     const total = Object.values(m).reduce((a, b) => a + b, 0);
-    return { ...m, total, renewalPct: total > 0 ? Math.round(m.Renovado / total * 100) : 0 };
+    return {
+      Renovado:   m.Renovado  || 0,
+      Pendente:   m.Pendente  || 0,
+      Cancelado:  m.Cancelado || 0,
+      total,
+      renewalPct: total > 0 ? Math.round((m.Renovado || 0) / total * 100) : 0,
+    };
   }, [renewalData]);
 
   const TABS: { id: Tab; label: string }[] = [
