@@ -558,7 +558,7 @@ export default function QualityPage() {
           {renewalData?.meta && (
             <p className="text-xs text-gray-400">
               Baseline: <span className="font-medium text-gray-600">{renewalData.meta.baseline_date}</span>
-              {" · "}Checado em: <span className="font-medium text-gray-600">{renewalData.meta.latest_check_date || renewalData.meta.last_checked}</span>
+              {" · "}Checado em: <span className="font-medium text-gray-600">{renewalData.meta.last_checked}</span>
               {" · "}Próximo semestre: <span className="font-medium text-blue-600">{renewalData.meta.next_semester}</span>
             </p>
           )}
