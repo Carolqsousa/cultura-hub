@@ -4,6 +4,9 @@ Fetches deals from RD Station CRM with full field mapping.
 
 Each daily run produces one row per deal, capturing its current state.
 History is preserved by keeping all past runs in BigQuery (append pattern).
+
+The pipeline map (stage_id -> pipeline) is built ONCE in run_leads.py
+and passed in here — shared with tasks.py to avoid redundant API calls.
 """
 
 from datetime import date
@@ -20,11 +23,10 @@ def _custom_field(deal, label):
         ...
       ]
 
-    We match by label because that's what's human-readable and stable
-    day-to-day. The risk: if someone renames the field in RD Station,
-    this silently returns None. A more robust approach would match by
-    custom_field_id (the immutable MongoDB ID), but that requires storing
-    the IDs separately. Label matching is the practical choice for now.
+    Risk: if someone renames the field in RD Station, this silently
+    returns None with no error. A more robust approach would match by
+    custom_field_id (the immutable MongoDB ID), but label matching is
+    the practical choice for now.
     """
     for cf in deal.get("deal_custom_fields", []):
         if (cf.get("custom_field") or {}).get("label", "").strip().lower() == label.lower():
@@ -53,8 +55,8 @@ def _parse_date(raw):
     """
     Extract just the date portion from a datetime string.
     RD Station returns ISO datetimes like '2026-07-02T18:13:34.275-03:00'.
-    We keep only the date '2026-07-02' — time and timezone aren't needed
-    for the analyses this table supports.
+    We keep only '2026-07-02' — time and timezone aren't needed for the
+    analyses this table supports.
     """
     if not raw:
         return None
@@ -75,55 +77,34 @@ def _tmv(created, closed):
         return None
 
 
-def fetch(rd_client) -> list[dict]:
+def fetch(rd_client, stage_pipeline_map: dict, stage_pname_map: dict) -> list[dict]:
     """
-    Fetch all deals from RD Station and return a list of rows ready
-    for BigQuery insertion.
+    Fetch all deals from RD Station and return rows ready for BigQuery.
 
-    One row per deal per run. The BigQuery writer (upsert_rows) deletes
-    today's rows before inserting, so running this multiple times in one
-    day is safe — you always end up with exactly one snapshot per deal
-    per day.
+    Parameters
+    ----------
+    rd_client
+        The RD Station API client.
+
+    stage_pipeline_map : dict
+        stage_id -> pipeline_id. Built once in run_leads.py and shared
+        with tasks.py so /deal_pipelines is only called once per run.
+
+    stage_pname_map : dict
+        stage_id -> pipeline_name. Same sharing pattern.
+
+    Why receive the maps instead of building them internally?
+    Both leads.py and tasks.py need to resolve pipeline from stage_id.
+    Building the map once in run_leads.py and passing it to both avoids
+    a redundant API call and guarantees both tables use identical mapping
+    within the same run.
     """
     today = date.today().isoformat()
 
-    # ── Step 1: fetch deals ────────────────────────────────────────────────────
     print(f"  [leads] Fetching all deals...")
     deals = rd_client.get_all_deals()
+    print(f"  [leads] {len(deals)} deals to process")
 
-    # ── Step 2: build pipeline map ────────────────────────────────────────────
-    # GET /deal_pipelines returns all funnels with their stages nested inside.
-    # We build two maps keyed by stage_id:
-    #   stage_pipeline_map  →  stage_id: pipeline_id   (opaque ID for joins)
-    #   stage_pname_map     →  stage_id: pipeline_name (human-readable label)
-    #
-    # Why not use GET /deal_stages?
-    # Without a pipeline filter, /deal_stages only returns stages from the
-    # DEFAULT funnel. If you have 5 funnels (as you do), you'd miss 4 of them.
-    # /deal_pipelines returns ALL funnels in one call.
-    #
-    # Why store pipeline_name in the row instead of joining later?
-    # Simplicity. A separate lookup table would be more normalized, but for
-    # a system this size it adds infrastructure (another table, another query)
-    # without meaningful benefit. If RD Station renames a funnel, we just
-    # re-run the pipeline and the new name appears in fresh rows going forward.
-    pipelines = rd_client.get_deal_pipelines()
-
-    stage_pipeline_map = {}  # stage_id -> pipeline_id
-    stage_pname_map    = {}  # stage_id -> pipeline_name
-
-    for p in pipelines:
-        pid   = p.get("id", "")
-        pname = p.get("name", "")
-        for s in p.get("deal_stages", []):
-            sid = s.get("id")
-            if sid:
-                stage_pipeline_map[sid] = pid
-                stage_pname_map[sid]    = pname
-
-    print(f"  [leads] {len(deals)} deals across {len(pipelines)} pipelines")
-
-    # ── Step 3: shape each deal into a row ────────────────────────────────────
     rows = []
 
     for d in deals:
@@ -138,8 +119,8 @@ def fetch(rd_client) -> list[dict]:
         loss_reason = loss_raw.get("name", "") if isinstance(loss_raw, dict) else str(loss_raw)
 
         # Determine deal status from the win/hold fields.
-        # RD Station uses: win=True (won), win=False (lost), hold=True (paused),
-        # win=None + hold=None (open/in progress).
+        # RD Station uses: win=True (won), win=False (lost),
+        # hold=True (paused), win=None + hold=None (open).
         if d.get("win") is True:
             status = "won"
         elif d.get("win") is False:
