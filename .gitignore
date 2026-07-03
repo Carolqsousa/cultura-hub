@@ -1,20 +1,26 @@
-# Credentials — NEVER commit these
-*.json
-!package.json
-!package-lock.json
-!tsconfig.json
-!next.config.json
-!postcss.config.json
+# ── Credentials — NEVER commit these ──────────────────────────────────────────
+# Block specific credential file patterns rather than all *.json files.
+# This allows schema files, Next.js configs, and other safe JSON to be
+# tracked normally without needing git add -f each time.
+#
+# If you download a service account or API credential file, put it OUTSIDE
+# the project folder, or add its exact filename here before git add-ing anything.
+service_account.json
+*credentials*.json
+*credential*.json
+*secrets*.json
+*secret*.json
+client_secret*.json
 
-# Python
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
 .env
 venv/
 
-# Node
+# ── Node ──────────────────────────────────────────────────────────────────────
 node_modules/
 .next/
 
-# OS
+# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
