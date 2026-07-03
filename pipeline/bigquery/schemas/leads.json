@@ -1,9 +1,9 @@
 [
   { "name": "date",              "type": "DATE",    "mode": "REQUIRED" },
-  { "name": "record_type",       "type": "STRING",  "mode": "REQUIRED" },
   { "name": "deal_id",           "type": "STRING",  "mode": "NULLABLE" },
   { "name": "name",              "type": "STRING",  "mode": "NULLABLE" },
   { "name": "pipeline_id",       "type": "STRING",  "mode": "NULLABLE" },
+  { "name": "pipeline_name",     "type": "STRING",  "mode": "NULLABLE" },
   { "name": "stage",             "type": "STRING",  "mode": "NULLABLE" },
   { "name": "status",            "type": "STRING",  "mode": "NULLABLE" },
   { "name": "responsible",       "type": "STRING",  "mode": "NULLABLE" },
@@ -24,9 +24,5 @@
   { "name": "rating",            "type": "INT64",   "mode": "NULLABLE" },
   { "name": "interactions",      "type": "INT64",   "mode": "NULLABLE" },
   { "name": "tmv_days",          "type": "INT64",   "mode": "NULLABLE" },
-  { "name": "task_subject",      "type": "STRING",  "mode": "NULLABLE" },
-  { "name": "task_done",         "type": "BOOL",    "mode": "NULLABLE" },
-  { "name": "task_due_date",     "type": "DATE",    "mode": "NULLABLE" },
-  { "name": "days_late",         "type": "INT64",   "mode": "NULLABLE" },
   { "name": "run_date",          "type": "DATE",    "mode": "NULLABLE" }
 ]
