@@ -4,24 +4,29 @@ Orchestrator — called by GitHub Actions daily.
 
 Responsibilities:
   1. Create the RD Station client (one instance, shared across pipelines)
-  2. Build the pipeline map ONCE (shared between leads and tasks)
-  3. Ensure BigQuery tables exist
-  4. Fetch and write leads
-  5. Fetch and write tasks
+  2. Build the pipeline map ONCE from /deal_pipelines (shared between leads and tasks)
+  3. Fetch and write leads — capturing a deal_id->pipeline_name map as a by-product
+  4. Build deal map from leads rows (zero extra API calls)
+  5. Fetch and write tasks — using deal map to resolve pipeline_name
   6. Fail loudly if anything goes wrong
 
 Why this file exists separately from leads.py and tasks.py?
 Single responsibility principle. Each file does one job:
-  - rd_station_client.py  →  speaks to the RD Station API
-  - leads.py              →  shapes deal data into rows
-  - tasks.py              →  shapes task data into rows
-  - bigquery/client.py    →  speaks to BigQuery
-  - run_leads.py          →  orchestrates all of the above
+  - rd_station_client.py  ->  speaks to the RD Station API
+  - leads.py              ->  shapes deal data into rows
+  - tasks.py              ->  shapes task data into rows
+  - bigquery/client.py    ->  speaks to BigQuery
+  - run_leads.py          ->  orchestrates all of the above
 
-This separation makes each piece independently testable and replaceable.
-If RD Station changes their API, you update rd_station_client.py only.
-If BigQuery changes their SDK, you update bigquery/client.py only.
-The orchestrator stays the same.
+Why does run_leads.py build and share the deal map?
+The /tasks API endpoint returns a minimal deal snapshot per task — just
+name, id, hold, and rating. It does NOT include deal_stage, which means
+tasks.py can't resolve pipeline_name from the stage map alone.
+
+The solution: after fetch_leads() runs, we build a deal_id->pipeline_name
+map from the rows it already produced. This map is then passed to
+fetch_tasks() so every task can resolve its pipeline_name via its deal_id.
+Zero extra API calls — we reuse data already fetched.
 """
 
 import logging
@@ -103,8 +108,8 @@ def run():
     Loud failures (red job, email notification) surface problems immediately
     when they're cheapest to fix.
     """
-    rd      = RDStationClient()
-    failed  = []
+    rd     = RDStationClient()
+    failed = []
 
     # ── Step 1: build shared pipeline map ────────────────────────────────────
     # This is the only call to /deal_pipelines in the entire run.
@@ -116,29 +121,43 @@ def run():
         sys.exit(1)
 
     # ── Step 2: leads pipeline ────────────────────────────────────────────────
+    # We also build a deal_id->pipeline_name map from the rows produced here.
+    # This map is passed to fetch_tasks() so tasks can resolve pipeline_name
+    # via their deal_id — because the /tasks API doesn't include stage info.
+    deal_pipeline_map = {}
     try:
         ensure_table("leads")
-        rows = fetch_leads(rd, stage_pipeline_map, stage_pname_map)
-        upsert_rows("leads", rows)
-        log.info(f"leads: {len(rows)} rows written")
+        lead_rows = fetch_leads(rd, stage_pipeline_map, stage_pname_map)
+        upsert_rows("leads", lead_rows)
+        log.info(f"leads: {len(lead_rows)} rows written")
+
+        # Build deal_id -> pipeline_name from the leads rows we just produced.
+        # Only include deals that have a resolved pipeline_name — deals without
+        # one (orphaned stages) can't help tasks either.
+        deal_pipeline_map = {
+            r["deal_id"]: r["pipeline_name"]
+            for r in lead_rows
+            if r.get("deal_id") and r.get("pipeline_name")
+        }
+        log.info(f"Deal pipeline map: {len(deal_pipeline_map)} deals with pipeline")
     except Exception:
         log.exception("leads pipeline FAILED")
         failed.append("leads")
 
     # ── Step 3: tasks pipeline ────────────────────────────────────────────────
+    # deal_pipeline_map may be empty if leads failed — tasks will still run
+    # but pipeline_name will be empty. This is acceptable: tasks running with
+    # partial data is better than tasks not running at all.
     try:
         ensure_table("tasks")
-        rows = fetch_tasks(rd, stage_pipeline_map, stage_pname_map)
-        upsert_rows("tasks", rows)
-        log.info(f"tasks: {len(rows)} rows written")
+        task_rows = fetch_tasks(rd, stage_pipeline_map, stage_pname_map, deal_pipeline_map)
+        upsert_rows("tasks", task_rows)
+        log.info(f"tasks: {len(task_rows)} rows written")
     except Exception:
         log.exception("tasks pipeline FAILED")
         failed.append("tasks")
 
     # ── Step 4: exit loudly if anything failed ────────────────────────────────
-    # sys.exit(1) makes GitHub Actions mark the job as FAILED,
-    # which triggers an email notification to the repo owner.
-    # Without this, a failed pipeline shows as green — silent data loss.
     if failed:
         log.error(f"The following pipelines failed: {failed}")
         sys.exit(1)

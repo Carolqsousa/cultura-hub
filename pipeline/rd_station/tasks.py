@@ -6,15 +6,17 @@ A "late task" is a task whose due date has passed and hasn't been
 marked as done. This is a signal of operational health — deals with
 many overdue tasks are being neglected by the sales team.
 
-This is deliberately a SEPARATE table from leads because:
-  - Tasks and deals have different shapes (different columns)
-  - Mixing them creates a sparse table where half the columns are
-    always NULL — a sign of bad data modeling
-  - Separate tables make queries simpler and schemas easier to understand
-  - You join them when needed via deal_id
+Separate table from leads because tasks and deals have different shapes.
+Mixing them in one table creates a sparse table where half the columns
+are always NULL — a sign of bad data modeling. Join on deal_id when needed.
 
-One row per late task per run. The BigQuery writer deletes today's
-rows before inserting, so running multiple times per day is safe.
+Why pipeline_name comes from deal_pipeline_map and not stage maps:
+The /tasks API returns a minimal deal snapshot per task:
+  { "id": "...", "name": "Lucas", "hold": null, "rating": 1 }
+It does NOT include deal_stage. Without a stage_id, we can't look up
+the pipeline from the stage maps. Instead, we use a deal_id->pipeline_name
+map built from the leads rows already fetched in run_leads.py.
+Zero extra API calls — we reuse data already in memory.
 """
 
 from datetime import date
@@ -31,30 +33,35 @@ def _parse_date(raw):
     return str(raw)[:10]
 
 
-def fetch(rd_client, stage_pipeline_map: dict, stage_pname_map: dict) -> list[dict]:
+def fetch(
+    rd_client,
+    stage_pipeline_map: dict,
+    stage_pname_map: dict,
+    deal_pipeline_map: dict,
+) -> list[dict]:
     """
     Fetch all late tasks and return rows ready for BigQuery.
 
     Parameters
     ----------
     rd_client
-        The RD Station API client — same instance used by leads.py.
-        Passed in so we don't create a second client or make redundant
-        API calls.
+        The RD Station API client.
 
     stage_pipeline_map : dict
-        stage_id -> pipeline_id, built once in run_leads.py and shared
-        between leads.py and tasks.py. Avoids calling /deal_pipelines twice.
+        stage_id -> pipeline_id. Passed in from run_leads.py.
+        Used as a fallback if a task's deal somehow has stage info.
 
     stage_pname_map : dict
-        stage_id -> pipeline_name, same sharing pattern.
+        stage_id -> pipeline_name. Same fallback purpose.
 
-    Why share the maps instead of fetching pipelines again?
-    The pipeline map doesn't change between the deals fetch and the tasks
-    fetch — they both run in the same pipeline execution. Fetching it twice
-    would mean an extra API call, extra latency, and a small risk that the
-    API returns slightly different data between the two calls (unlikely but
-    possible if someone updates a funnel mid-run).
+    deal_pipeline_map : dict
+        deal_id -> pipeline_name. Built from leads rows in run_leads.py.
+        This is the PRIMARY source for resolving pipeline_name in tasks,
+        because the /tasks API doesn't include deal_stage in its response.
+
+    Why receive four parameters instead of building everything internally?
+    All maps are built once in run_leads.py and shared. This avoids
+    redundant API calls and guarantees consistency across both tables.
     """
     today    = date.today().isoformat()
     today_dt = date.today()
@@ -62,42 +69,61 @@ def fetch(rd_client, stage_pipeline_map: dict, stage_pname_map: dict) -> list[di
     print(f"  [tasks] Fetching all tasks...")
     tasks = rd_client.get_all_tasks()
 
-    rows      = []
+    rows       = []
     late_count = 0
     skip_count = 0
 
     for t in tasks:
-        # Skip completed tasks — we only care about overdue incomplete ones
+        # Skip completed tasks
         if t.get("done"):
             skip_count += 1
             continue
 
         task_date = _parse_date(t.get("date"))
 
-        # Skip tasks with no due date or due date in the future/today
-        # A task is only "late" if its due date is strictly before today
+        # Skip tasks with no due date or due date today/future.
+        # A task is "late" only if its due date is strictly before today.
         if not task_date or task_date >= today:
             skip_count += 1
             continue
 
         days_late = (today_dt - date.fromisoformat(task_date)).days
 
-        # The task object contains a nested deal snapshot (name + stage only,
-        # not full deal data). We use it to resolve the pipeline.
-        deal          = t.get("deal") or {}
-        stage_id      = (deal.get("deal_stage") or {}).get("id", "")
-        pipeline_id   = stage_pipeline_map.get(stage_id, "")
-        pipeline_name = stage_pname_map.get(stage_id, "")
+        deal    = t.get("deal") or {}
+        deal_id = t.get("deal_id", "")
 
-        # Tasks can have multiple assigned users — we take the first one.
-        # In practice RD Station tasks are assigned to one person at a time.
-        users         = t.get("users") or []
-        responsible   = users[0].get("name", "") if users else ""
-        responsible_id = users[0].get("id", "")  if users else ""
+        # Resolve pipeline_name via the deal map (primary path).
+        # The /tasks API doesn't include deal_stage in the deal snapshot,
+        # so stage_pipeline_map can't help us here. The deal_pipeline_map
+        # — built from the leads we already fetched — is the correct source.
+        pipeline_name = deal_pipeline_map.get(deal_id, "")
+        pipeline_id   = ""
+
+        # Fallback: if the task's deal object happens to include stage info
+        # (which the current API doesn't, but might in future versions),
+        # use the stage map. This makes the code forward-compatible.
+        stage_id = (deal.get("deal_stage") or {}).get("id", "")
+        if stage_id and not pipeline_name:
+            pipeline_name = stage_pname_map.get(stage_id, "")
+            pipeline_id   = stage_pipeline_map.get(stage_id, "")
+        elif pipeline_name:
+            # Resolve pipeline_id from the name via reverse lookup.
+            # Less efficient than a direct map but avoids storing a second
+            # deal_id->pipeline_id map in the orchestrator.
+            pipeline_id = next(
+                (pid for pid, pname in
+                 zip(stage_pipeline_map.values(), stage_pname_map.values())
+                 if pname == pipeline_name),
+                ""
+            )
+
+        users          = t.get("users") or []
+        responsible    = users[0].get("name", "") if users else ""
+        responsible_id = users[0].get("id", "")   if users else ""
 
         rows.append({
             "date":           today,
-            "deal_id":        t.get("deal_id", ""),
+            "deal_id":        deal_id,
             "deal_name":      deal.get("name", ""),
             "pipeline_id":    pipeline_id,
             "pipeline_name":  pipeline_name,
