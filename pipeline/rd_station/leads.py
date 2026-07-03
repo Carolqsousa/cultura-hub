@@ -43,15 +43,27 @@ def fetch(rd_client) -> list[dict]:
     today_dt = date.today()
 
     print(f"  [leads] Fetching all deals...")
-    deals  = rd_client.get_all_deals()
-    stages = rd_client.get_deal_stages()
-    print(f"  [leads] {len(deals)} deals, {len(stages)} stages")
+    deals     = rd_client.get_all_deals()
+    pipelines = rd_client.get_deal_pipelines()
 
-    stage_map = {s["id"]: s["name"] for s in stages}
+    # Build stage->name and stage->pipeline_id maps from /deal_pipelines.
+    # This single call covers ALL funnels; /deal_stages alone only returns the default one.
+    stage_map          = {}  # stage_id -> stage name
+    stage_pipeline_map = {}  # stage_id -> pipeline_id
+    for p in pipelines:
+        pid = p.get("id", "")
+        for s in p.get("deal_stages", []):
+            sid = s.get("id")
+            if sid:
+                stage_map[sid]          = s.get("name", "")
+                stage_pipeline_map[sid] = pid
+
+    print(f"  [leads] {len(deals)} deals, {len(pipelines)} pipelines")
     rows = []
 
     for d in deals:
-        stage_id = (d.get("deal_stage") or {}).get("id", "")
+        stage_id    = (d.get("deal_stage") or {}).get("id", "")
+        pipeline_id = stage_pipeline_map.get(stage_id, "")
         user     = d.get("user") or {}
         source   = (d.get("deal_source") or {}).get("name", "")
         campaign = (d.get("campaign") or {}).get("name", "")
@@ -77,7 +89,8 @@ def fetch(rd_client) -> list[dict]:
             "record_type":       "deal",
             "deal_id":           d.get("id", ""),
             "name":              d.get("name", ""),
-            "stage":             stage_map.get(stage_id, ""),
+            "pipeline_id":       pipeline_id,
+            "stage":             (d.get("deal_stage") or {}).get("name") or stage_map.get(stage_id, ""),
             "status":            status,
             "responsible":       user.get("name", ""),
             "responsible_id":    user.get("id", ""),
@@ -118,13 +131,16 @@ def fetch(rd_client) -> list[dict]:
         users     = t.get("users") or []
         user_name = users[0].get("name", "") if users else ""
         user_id   = users[0].get("id", "")   if users else ""
-        deal      = t.get("deal") or {}
+        deal          = t.get("deal") or {}
+        task_stage_id = (deal.get("deal_stage") or {}).get("id", "")
+        task_pipeline = stage_pipeline_map.get(task_stage_id, "")
 
         rows.append({
             "date":              today,
             "record_type":       "late_task",
             "deal_id":           t.get("deal_id", ""),
             "name":              deal.get("name", ""),
+            "pipeline_id":       task_pipeline,
             "stage":             None,
             "status":            "late",
             "responsible":       user_name,
