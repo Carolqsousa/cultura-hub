@@ -81,8 +81,18 @@ interface CommercialData {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const FUNNELS = ["Todas", "Boa Viagem", "Setúbal", "The Nest", "Instituto Europa", "Sem Funil", "Outras Unidades"];
+//
+// NOTE — funnel options are no longer a hardcoded constant here.
+// They used to be a fixed list of unit_interest labels ("Boa Viagem", "Setúbal"...)
+// but pipeline_name (what the API now filters on) uses different exact strings
+// coming straight from RD Station ("Funil BOA VIAGEM", "Instituto Europa", etc.),
+// and that set can change if a branch adds/renames a funnel. A hardcoded list here
+// would silently drift out of sync with the API — the dropdown would offer options
+// that match zero rows, so a manager would see an empty page and think business
+// stopped, not that the label was slightly off.
+// Instead we read `data.availableFunnels`, which the API computes live from
+// whatever pipeline_name values actually exist in the current date range —
+// exactly the same pattern already used below for the "responsible" dropdown.
 
 // Brand colors matching the HTML report
 const COLORS = {
@@ -390,7 +400,8 @@ export default function CommercialPage() {
         <label className="text-xs font-bold text-[#0f3460] whitespace-nowrap">🏢 Funil:</label>
         <select value={funnel} onChange={e => setFunnel(e.target.value)}
           className="text-xs border border-gray-300 rounded-md px-2 py-1.5 bg-gray-50 focus:outline-none focus:border-[#0f3460]">
-          {FUNNELS.map(f => <option key={f}>{f}</option>)}
+          <option value="Todas">Todas</option>
+          {(data?.availableFunnels || []).map(f => <option key={f}>{f}</option>)}
         </select>
 
         <div className="w-px h-6 bg-gray-200 shrink-0" />

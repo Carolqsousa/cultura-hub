@@ -16,14 +16,24 @@
 //   would be ~40x too high. The QUALIFY ROW_NUMBER() pattern keeps only
 //   the most recent snapshot per deal, giving us current state.
 //
-// FUNNEL MAPPING — Why we normalize unit_interest:
-//   RD Station has historical data with mixed casing (Boa Viagem / BOA VIAGEM).
-//   Since it's now a dropdown, new data will be consistent — but old data isn't.
-//   UPPER(TRIM()) normalizes before comparison so both map to the same bucket.
+// FUNNEL MAPPING — now driven by pipeline_name, not unit_interest:
+//   unit_interest was free text typed into RD Station — inconsistent casing,
+//   no guarantee it matched a real funnel. pipeline_name is resolved server-side
+//   in the pipeline from RD Station's /deal_pipelines endpoint, so it's already
+//   one of a known, controlled set of funnel names. We no longer need a CASE
+//   statement to guess which bucket a row belongs to.
 //
-// RISK: If RD Station adds a new dropdown option (e.g. a new branch opens),
-//   it will silently fall into 'Outras Unidades' until the mapping is updated here.
-//   The monitoring query at the bottom of this file detects this.
+// RISK — historical rows have no funnel:
+//   pipeline_name was only added going forward. Every row written before the
+//   fix has pipeline_name = NULL. We label those 'Sem Funil (Histórico)'
+//   instead of silently excluding them from funnel filters — a silent drop
+//   here would understate historical totals without any error to notice.
+//
+// RISK — tipo is a new, sparsely-filled field:
+//   Only ~34% of deals have `tipo` set in RD Station. It is NOT used as a
+//   filter or grouping in this file yet — filtering on it would silently
+//   exclude the other 66% of deals. Treat it as an optional dimension to add
+//   later, with NULL handled explicitly, not as a required field.
 
 import { NextRequest, NextResponse } from "next/server";
 import { BigQuery } from "@google-cloud/bigquery";
@@ -58,20 +68,13 @@ async function bqQuery<T = Record<string, unknown>>(sql: string): Promise<T[]> {
 // syntax doesn't work well with QUALIFY and complex CTEs in some SDK versions.
 function esc(v: string) { return v.replace(/'/g, "''"); }
 
-// ── Funnel normalization ──────────────────────────────────────────────────────
-// Centralizing the CASE statement in one constant means if the mapping ever
-// needs updating (new branch, spelling change), it only changes in one place.
-// This is the DRY principle applied to SQL — "Don't Repeat Yourself."
-const FUNNEL_CASE = `
-  CASE UPPER(TRIM(unit_interest))
-    WHEN 'BOA VIAGEM'       THEN 'Boa Viagem'
-    WHEN 'SETUBAL'          THEN 'Setúbal'
-    WHEN 'THE NEST'         THEN 'The Nest'
-    WHEN 'INSTITUTO EUROPA' THEN 'Instituto Europa'
-    WHEN ''                 THEN 'Sem Funil'
-    ELSE 'Outras Unidades'
-  END
-`;
+// ── Funnel resolution ──────────────────────────────────────────────────────────
+// pipeline_name comes pre-resolved from the pipeline (via RD Station's
+// /deal_pipelines endpoint), so there's no casing/mapping guesswork left to do
+// here — just a NULL-safe label for rows written before pipeline_name existed.
+// Centralizing it in one constant means if the historical label ever needs to
+// change, it changes in exactly one place.
+const FUNNEL_EXPR = `COALESCE(NULLIF(TRIM(pipeline_name), ''), 'Sem Funil (Histórico)')`;
 
 // ── Base CTE ──────────────────────────────────────────────────────────────────
 // Every query in this file starts with this CTE (Common Table Expression).
@@ -79,11 +82,17 @@ const FUNNEL_CASE = `
 // that exists only for the duration of this query.
 //
 // What it does:
-//   1. Filters to deals only (not late_task records)
-//   2. Filters to the requested date range
-//   3. Deduplicates to one row per deal (most recent snapshot)
-//   4. Adds the normalized funnel column
-//   5. Optionally filters by funnel and/or responsible
+//   1. Filters to the requested date range
+//   2. Deduplicates to one row per deal (most recent snapshot)
+//   3. Adds the resolved funnel column
+//   4. Optionally filters by funnel and/or responsible
+//
+// FIX — record_type filter removed:
+//   The old CTE filtered `WHERE record_type = 'deal'`. That column was
+//   dropped from the leads table in the RD Station migration (tasks now
+//   live in their own `tasks` table, so every leads row is already a deal).
+//   Leaving that filter in would make every query in this file fail with a
+//   "column not found" error — it wasn't just stale, it was a hard break.
 //
 // PERFORMANCE NOTE: The WHERE clause runs BEFORE QUALIFY in BigQuery's
 // execution order. This means we filter down to a small date range FIRST,
@@ -91,7 +100,7 @@ const FUNNEL_CASE = `
 // all 214k rows and then filtering.
 function baseCTE(startDate: string, endDate: string, funnel: string, responsible: string) {
   const funnelFilter = funnel !== "all"
-    ? `AND ${FUNNEL_CASE} = '${esc(funnel)}'`
+    ? `AND ${FUNNEL_EXPR} = '${esc(funnel)}'`
     : "";
   const respFilter = responsible !== "all"
     ? `AND responsible = '${esc(responsible)}'`
@@ -100,10 +109,9 @@ function baseCTE(startDate: string, endDate: string, funnel: string, responsible
   return `
     WITH latest_deals AS (
       SELECT *,
-        ${FUNNEL_CASE} AS funnel
+        ${FUNNEL_EXPR} AS funnel
       FROM \`${PROJECT}.${DATASET}.leads\`
-      WHERE record_type = 'deal'
-        AND created_at BETWEEN DATE('${esc(startDate)}') AND DATE('${esc(endDate)}')
+      WHERE created_at BETWEEN DATE('${esc(startDate)}') AND DATE('${esc(endDate)}')
         ${funnelFilter}
         ${respFilter}
       QUALIFY ROW_NUMBER() OVER (PARTITION BY deal_id ORDER BY date DESC) = 1
