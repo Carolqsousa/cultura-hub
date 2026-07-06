@@ -7,7 +7,7 @@ const NAV_LINKS = [
   { href: "/students",  label: "Students" },
   { href: "/financial", label: "Financial" },
   { href: "/teachers",  label: "Teachers" },
-  { href: "/comercial", label: "Comercial" },
+  { href: "/commercial", label: "Commercial" },
   { href: "/todos",     label: "To-Do" },
   { href: "/quality",   label: "Quality" },
 ];
