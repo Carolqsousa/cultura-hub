@@ -2,6 +2,30 @@ import { query, DATASET } from "@/lib/bigquery";
 
 export const dynamic = "force-dynamic";
 
+// ── Resilience wrapper ──────────────────────────────────────────────────────
+// WHY THIS EXISTS: this file makes 10 BigQuery calls across two Promise.all
+// batches. Promise.all fails all-or-nothing — one bad query used to be able
+// to blank the ENTIRE homepage (academic, financial, operational sections
+// included), even though only the commercial-metrics queries were actually
+// broken. safeQuery() isolates each call: a failure is logged loudly on the
+// server (so it's never silently invisible) but returns an empty result
+// instead of throwing, so the rest of the page still renders.
+//
+// NOTE: this is a different failure philosophy than the pipeline's
+// sys.exit(1) pattern, deliberately. The pipeline writes data — it should
+// fail loud so nobody trusts a silently-incomplete write. This reads data
+// for a live page — it should degrade gracefully per-section so one broken
+// metric doesn't take five working ones down with it. Same value (never
+// hide a failure), different layer, different correct behavior.
+async function safeQuery(sql: string, label: string) {
+  try {
+    return await query(sql);
+  } catch (err) {
+    console.error(`[overview] query failed (${label}):`, err);
+    return [];
+  }
+}
+
 function branchFilter(branch: string, field = "branch") {
   return branch !== "all" ? `AND ${field} = '${branch}'` : "";
 }
@@ -29,13 +53,20 @@ function getSemester(period: string): string {
 async function fetchPeriodData(period: string, branch: string) {
   const pDate    = `DATE '${period}-01'`;
   const bFilter  = branchFilter(branch);
+  // NOTE — unit_interest left untouched deliberately:
+  // This field identifies BRANCH (Boa Viagem, Young, Setubal, Natal), not
+  // FUNNEL. The RD Station migration's pipeline_name is a funnel label with
+  // only 5 values, and "Young"/"Natal" don't appear among them — they likely
+  // collapse into a catch-all "Funil OUTRAS UNIDADES" bucket. Swapping this
+  // to pipeline_name without confirming that mapping could silently merge
+  // Young and Natal's numbers together. Needs a deliberate decision, not a
+  // guess — tracked separately from this crash fix.
   const bLeads   = branchFilter(branch, "unit_interest");
-  const bXls     = xlsBranchFilter(branch);
   const semester = getSemester(period);
 
   const [academic, financial, operational, newLeads, conversions, cancellations] = await Promise.all([
 
-    query(`
+    safeQuery(`
       WITH s AS (
         SELECT student_id FROM \`${DATASET}.students\`
         WHERE DATE_TRUNC(date, MONTH) = ${pDate} ${bFilter}
@@ -58,49 +89,51 @@ async function fetchPeriodData(period: string, branch: string) {
       FROM s
       LEFT JOIN g ON s.student_id = g.student_id
       LEFT JOIN a ON s.student_id = a.student_id
-    `),
+    `, "academic"),
 
-    query(`
+    safeQuery(`
       SELECT
         COUNT(DISTINCT student_id)   as defaulting_students,
         ROUND(SUM(value), 2)         as total_overdue
       FROM \`${DATASET}.financials\`
       WHERE DATE_TRUNC(date, MONTH) = ${pDate} ${bFilter}
-    `),
+    `, "financial"),
 
-    query(`
+    safeQuery(`
       SELECT
         SUM(total_lessons) as total_lessons,
         SUM(completed)     as completed,
         SUM(pending)       as pending
       FROM \`${DATASET}.diary_checks\`
       WHERE DATE_TRUNC(date, MONTH) = ${pDate} ${bFilter}
-    `),
+    `, "operational"),
 
-    query(`
+    // FIX — record_type = 'deal' removed: column was dropped from `leads`
+    // in the RD Station migration. This is what was crashing the homepage.
+    safeQuery(`
       SELECT COUNT(*) as cnt
       FROM \`${DATASET}.leads\`
-      WHERE record_type = 'deal'
-        AND DATE_TRUNC(created_at, MONTH) = ${pDate} ${bLeads}
-    `),
+      WHERE DATE_TRUNC(created_at, MONTH) = ${pDate} ${bLeads}
+    `, "newLeads"),
 
-    query(`
+    // FIX — record_type = 'deal' removed (see above)
+    safeQuery(`
       SELECT COUNT(*) as cnt
       FROM \`${DATASET}.leads\`
-      WHERE record_type = 'deal' AND status = 'won'
+      WHERE status = 'won'
         AND DATE_TRUNC(CAST(closed_at AS DATE), MONTH) = ${pDate} ${bLeads}
-    `),
+    `, "conversions"),
 
     // Cancellations from cancellations_xls — real churn only, filtered by month
-    query(`
+    safeQuery(`
       SELECT
         COUNT(*)               as total_cancels,
         COUNTIF(is_real_churn) as real_churn
       FROM \`${DATASET}.cancellations_xls\`
       WHERE semester = '${semester}'
         AND DATE_TRUNC(event_date, MONTH) = ${pDate}
-        ${bXls}
-    `),
+        ${xlsBranchFilter(branch)}
+    `, "cancellations"),
   ]);
 
   const ac  = academic[0]      || {};
@@ -149,29 +182,29 @@ export async function GET(request: Request) {
   const branch        = searchParams.get("branch")         || "all";
   const period        = searchParams.get("period")         || new Date().toISOString().slice(0, 7);
   const comparePeriod = searchParams.get("compare_period") || null;
-  const bLeads        = branchFilter(branch, "unit_interest");
+  const bLeads        = branchFilter(branch, "unit_interest"); // see NOTE above — left as-is deliberately
 
   const [periodData, compareData, top3Sources, top3Sales] = await Promise.all([
     fetchPeriodData(period, branch),
     comparePeriod ? fetchPeriodData(comparePeriod, branch) : Promise.resolve(null),
 
-    query(`
+    // FIX — record_type = 'deal' removed (see fetchPeriodData above)
+    safeQuery(`
       SELECT source, COUNT(*) as count
       FROM \`${DATASET}.leads\`
-      WHERE record_type = 'deal'
-        AND created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+      WHERE created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
         AND source IS NOT NULL AND source != '' ${bLeads}
       GROUP BY source ORDER BY count DESC LIMIT 3
-    `),
+    `, "top3Sources"),
 
-    query(`
+    // FIX — record_type = 'deal' removed (see fetchPeriodData above)
+    safeQuery(`
       SELECT responsible, COUNT(*) as total, COUNTIF(status = 'won') as conversions
       FROM \`${DATASET}.leads\`
-      WHERE record_type = 'deal'
-        AND created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+      WHERE created_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
         AND responsible IS NOT NULL AND responsible != '' ${bLeads}
       GROUP BY responsible ORDER BY conversions DESC, total DESC LIMIT 3
-    `),
+    `, "top3Sales"),
   ]);
 
   return Response.json({
