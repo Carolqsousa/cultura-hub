@@ -244,6 +244,13 @@ def fetch_next_semester_class_ids(branch, api_key, next_sem):
 
 # --- Step 2: Check status (every day, using frozen baseline) -----------------
 
+# How many consecutive most-recent snapshot dates a student must be
+# missing from before we conclude they actually cancelled. Guards against
+# a single failed daily upload (one branch, one day) wrongly flagging
+# real, still-enrolled students -- requires a sustained absence instead.
+STATUS_CHECK_CONSECUTIVE_DAYS = 3
+
+
 def check_status(bq, ending_sem):
     next_sem = next_semester(ending_sem)
 
@@ -255,19 +262,24 @@ def check_status(bq, ending_sem):
     """)
     if not baseline:
         print(f"  No baseline for {ending_sem} yet - nothing to check")
-        return []
+        return [], set()
 
     baseline_date_str = str(baseline[0]["baseline_date"])
     print(f"  Baseline: {len(baseline)} students (frozen on {baseline_date_str})")
 
-    latest_check = bq_query(bq, f"""
-        SELECT MAX(date) AS d FROM `{GCP_PROJECT}.{BQ_DATASET}.students`
+    recent_dates_rows = bq_query(bq, f"""
+        SELECT DISTINCT date FROM `{GCP_PROJECT}.{BQ_DATASET}.students`
+        ORDER BY date DESC
+        LIMIT {STATUS_CHECK_CONSECUTIVE_DAYS}
     """)
-    latest_date = latest_check[0]["d"]
-    latest_date_str = (
-        latest_date.strftime("%Y-%m-%d") if hasattr(latest_date, "strftime") else str(latest_date)
-    )
+    recent_dates = [str(r["date"]) for r in recent_dates_rows]
+    if not recent_dates:
+        print(f"  WARNING: no students snapshots found at all - skipping check")
+        return [], set()
+
+    latest_date_str = recent_dates[0]
     print(f"  Latest snapshot: {latest_date_str}")
+    print(f"  Checking presence across last {len(recent_dates)} snapshot date(s): {recent_dates}")
 
     print(f"  Fetching {next_sem} classes from Sponte...")
     next_sem_classes_by_branch = {}
@@ -275,19 +287,43 @@ def check_status(bq, ending_sem):
         next_sem_classes_by_branch[branch] = fetch_next_semester_class_ids(branch, api_key, next_sem)
         time.sleep(0.2)
 
-    latest_students = bq_query(bq, f"""
-        SELECT student_id, branch, registered_class_ids
+    # Students present on ANY of the recent dates, keyed by (student_id,
+    # branch) -> their most recent row. A student only counts as
+    # "missing" if they're absent from EVERY date in the window.
+    date_list_sql = ", ".join(f"'{d}'" for d in recent_dates)
+    recent_students = bq_query(bq, f"""
+        SELECT student_id, branch, registered_class_ids, date
         FROM `{GCP_PROJECT}.{BQ_DATASET}.students`
-        WHERE date = '{latest_date_str}'
+        WHERE date IN ({date_list_sql})
+        ORDER BY date DESC
     """)
-    latest_map = {(s["student_id"], s["branch"]): s for s in latest_students}
+    presence_map = {}
+    for s in recent_students:
+        key = (s["student_id"], s["branch"])
+        if key not in presence_map:
+            presence_map[key] = s  # first hit wins = most recent, since DESC
+
+    # Branch-level guard: a branch with ZERO rows across the whole window
+    # means ITS upload pipeline has been failing, not that all its
+    # students cancelled at once. Skip Cancelado evaluation for these
+    # branches this run rather than mass-flagging real students.
+    branches_with_data = {s["branch"] for s in recent_students}
+    baseline_branches = {b["branch"] for b in baseline}
+    dead_branches = baseline_branches - branches_with_data
+    if dead_branches:
+        print(f"  WARNING: no students data at all for {sorted(dead_branches)} across "
+              f"the last {len(recent_dates)} snapshots -- likely a pipeline outage, "
+              f"not real cancellations. Leaving these branches' status untouched this run.")
 
     now = datetime.now(timezone.utc).isoformat()
     rows = []
 
     for b in baseline:
+        if b["branch"] in dead_branches:
+            continue  # can't tell -- branch's own snapshot pipeline is down
+
         key = (b["student_id"], b["branch"])
-        latest = latest_map.get(key)
+        latest = presence_map.get(key)
         next_sem_ids = next_sem_classes_by_branch.get(b["branch"], set())
 
         if latest is None:
@@ -314,16 +350,28 @@ def check_status(bq, ending_sem):
             "next_class_id":     next_class_id,
         })
 
-    return rows
+    # healthy_branches: return alongside rows so load_status_rows only
+    # replaces status for branches we actually had fresh data for --
+    # dead branches' last known status stays in the table untouched.
+    healthy_branches = baseline_branches - dead_branches
+    return rows, healthy_branches
 
 
-def load_status_rows(bq, rows, ending_sem):
-    if not rows:
+def load_status_rows(bq, rows, ending_sem, healthy_branches):
+    if not healthy_branches:
+        print("  No branches had fresh data this run - nothing updated")
         return 0
     table_ref = f"{GCP_PROJECT}.{BQ_DATASET}.{STATUS_TABLE}"
+    branch_list_sql = ", ".join(f"'{b}'" for b in healthy_branches)
+    # Only delete/replace status for branches we actually re-evaluated
+    # this run -- a branch mid-outage keeps its last known good status
+    # instead of being wiped by an empty result set.
     bq.query(f"""
-        DELETE FROM `{table_ref}` WHERE ending_semester = '{ending_sem}'
+        DELETE FROM `{table_ref}`
+        WHERE ending_semester = '{ending_sem}' AND branch IN ({branch_list_sql})
     """).result()
+    if not rows:
+        return 0
     job = bq.load_table_from_json(
         rows, table_ref,
         job_config=bigquery.LoadJobConfig(
@@ -367,13 +415,13 @@ def main():
 
         if 0 <= days_since_end <= STATUS_CHECK_WINDOW_DAYS:
             print(f"\nChecking renewal status: {sem} -> {next_semester(sem)} (day {days_since_end} of {STATUS_CHECK_WINDOW_DAYS})")
-            rows = check_status(bq, sem)
+            rows, healthy_branches = check_status(bq, sem)
             if rows:
                 renewed   = sum(1 for r in rows if r["status"] == "Renovado")
                 cancelled = sum(1 for r in rows if r["status"] == "Cancelado")
                 pending   = sum(1 for r in rows if r["status"] == "Pendente")
-                print(f"   Renovado: {renewed} | Cancelado: {cancelled} | Pendente: {pending}")
-                n = load_status_rows(bq, rows, sem)
+                print(f"   Renovado: {renewed} | Cancelado: {cancelled} | Pending: {pending}")
+                n = load_status_rows(bq, rows, sem, healthy_branches)
                 print(f"   {n} rows stored")
             did_anything = True
 
