@@ -738,6 +738,11 @@ export default function CommercialPage() {
                 <div className="col-span-2">
                   <Card title="Tarefas Atrasadas por Atendente" fullWidth
                     subtitle="Tarefas com prazo vencido, não concluídas — sinal de negligência operacional. Linha vermelha = 7+ dias atrasada.">
+                    <Insight>
+                      <strong>⚠️ Nota:</strong> esta tabela mostra o snapshot mais recente de
+                      tarefas atrasadas — <strong>não é afetada pelo filtro de período (📅)</strong> acima.
+                      Tarefas atrasadas são sempre "agora", não uma soma histórica do intervalo selecionado.
+                    </Insight>
                     {data.lateTasks.length === 0 ? (
                       <div className="text-center text-gray-400 py-8">
                         Nenhuma tarefa atrasada no momento 🎉

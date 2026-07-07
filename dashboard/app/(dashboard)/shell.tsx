@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { href: "/financial", label: "Financial" },
   { href: "/teachers",  label: "Teachers" },
   { href: "/commercial", label: "Commercial" },
+  { href: "/commercial-natal", label: "Commercial — Natal" },
   { href: "/todos",     label: "To-Do" },
   { href: "/quality",   label: "Quality" },
 ];
