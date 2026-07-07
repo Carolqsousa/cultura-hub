@@ -119,6 +119,34 @@ function baseCTE(startDate: string, endDate: string, funnel: string, responsible
   `;
 }
 
+// ── Filter options CTE ───────────────────────────────────────────────────────
+// Deliberately SEPARATE from baseCTE, and must stay that way.
+//
+// THE BUG THIS PREVENTS: baseCTE applies the current funnel/responsible
+// selections. If the "what options exist" query (below, Query 7) reused
+// baseCTE, then the moment a user selected one funnel, this query would
+// only see rows already narrowed to that funnel -- so every OTHER funnel
+// would silently vanish from the dropdown. The user would have to reset to
+// "all" just to see the other options again. Same failure shape as
+// "options computed from an already-filtered result" bugs found elsewhere
+// in this project's data pipelines today -- no error, just quietly wrong,
+// and only noticeable once someone actually uses the filter.
+//
+// This CTE only ever applies the date range -- never funnel, never
+// responsible -- so both dropdowns always show every option valid for the
+// selected date range, regardless of what's currently selected in either.
+function filterOptionsCTE(startDate: string, endDate: string) {
+  return `
+    WITH latest_deals AS (
+      SELECT *,
+        ${FUNNEL_EXPR} AS funnel
+      FROM \`${PROJECT}.${DATASET}.leads\`
+      WHERE created_at BETWEEN DATE('${esc(startDate)}') AND DATE('${esc(endDate)}')
+      QUALIFY ROW_NUMBER() OVER (PARTITION BY deal_id ORDER BY date DESC) = 1
+    )
+  `;
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
 
@@ -310,12 +338,15 @@ export async function GET(req: NextRequest) {
     `;
 
     // ── Query 7: Available filters ─────────────────────────────────────────
-    // Returns the list of funnels and responsibles available in the
-    // current date range — so the filter dropdowns only show options
-    // that actually have data. Avoids the frustrating UX of selecting
-    // a filter and getting zero results.
+    // Returns every funnel/responsible that has data in the FULL date
+    // range -- deliberately ignoring whatever funnel/responsible is
+    // currently selected. Uses filterOptionsCTE, NOT `base` (which every
+    // other query above uses). See filterOptionsCTE's comment for why
+    // reusing `base` here would be a bug: it would make the dropdown
+    // options shrink to match whatever's currently selected, instead of
+    // always showing the full set of choices.
     const filtersSQL = `
-      ${base}
+      ${filterOptionsCTE(startDate, endDate)}
       SELECT
         funnel,
         responsible,
