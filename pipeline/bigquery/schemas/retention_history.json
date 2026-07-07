@@ -1,0 +1,19 @@
+[
+  { "name": "captured_at",        "type": "TIMESTAMP", "mode": "NULLABLE" },
+  { "name": "semester",           "type": "STRING",    "mode": "NULLABLE" },
+  { "name": "snapshot_date",      "type": "DATE",       "mode": "NULLABLE" },
+  { "name": "snapshot_type",      "type": "STRING",    "mode": "NULLABLE" },
+  { "name": "is_estimated",       "type": "BOOLEAN",   "mode": "NULLABLE" },
+  { "name": "actual_snap_date",   "type": "DATE",       "mode": "NULLABLE" },
+  { "name": "dimension",          "type": "STRING",    "mode": "NULLABLE" },
+  { "name": "branch",             "type": "STRING",    "mode": "NULLABLE" },
+  { "name": "stage",              "type": "STRING",    "mode": "NULLABLE" },
+  { "name": "teacher",            "type": "STRING",    "mode": "NULLABLE" },
+  { "name": "class_name",         "type": "STRING",    "mode": "NULLABLE" },
+  { "name": "student_count",      "type": "INTEGER",   "mode": "NULLABLE" },
+  { "name": "class_count",        "type": "INTEGER",   "mode": "NULLABLE" },
+  { "name": "avg_freq",           "type": "FLOAT",      "mode": "NULLABLE" },
+  { "name": "total_churn",        "type": "INTEGER",   "mode": "NULLABLE" },
+  { "name": "real_churn",         "type": "INTEGER",   "mode": "NULLABLE" },
+  { "name": "retention_pct",      "type": "FLOAT",      "mode": "NULLABLE" }
+]

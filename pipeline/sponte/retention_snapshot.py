@@ -118,26 +118,30 @@ def bq_query(bq, sql):
 
 
 # ─── Schema ───────────────────────────────────────────────────────────────────
+# Loaded from the external JSON file, same convention as every other fetcher
+# in this project (students.py, diary_check.py, etc.) — NOT hardcoded here.
+# Previously this was a hardcoded BQ_SCHEMA list, which meant the schema
+# existed in two disconnected places: nowhere documented outside code, and
+# only ever checked by re-reading this file. Loading from the shared JSON
+# file means: (1) the schema is documented on disk independent of this
+# script, useful for disaster recovery, and (2) the automated
+# check_schema_drift.py tool validates against the SAME file this code
+# actually loads at runtime — no risk of checking one copy while a
+# different, drifted copy governs what really gets written to BigQuery.
 
-BQ_SCHEMA = [
-    bigquery.SchemaField("captured_at",    "TIMESTAMP"),
-    bigquery.SchemaField("semester",       "STRING"),
-    bigquery.SchemaField("snapshot_date",  "DATE"),
-    bigquery.SchemaField("snapshot_type",  "STRING"),   # start | mid | end
-    bigquery.SchemaField("is_estimated",   "BOOLEAN"),  # True if nearest snapshot used
-    bigquery.SchemaField("actual_snap_date", "DATE"),   # actual snapshot date used
-    bigquery.SchemaField("dimension",      "STRING"),   # global | stage | teacher | class
-    bigquery.SchemaField("branch",         "STRING"),
-    bigquery.SchemaField("stage",          "STRING"),
-    bigquery.SchemaField("teacher",        "STRING"),
-    bigquery.SchemaField("class_name",     "STRING"),
-    bigquery.SchemaField("student_count",  "INTEGER"),
-    bigquery.SchemaField("class_count",    "INTEGER"),  # teachers only
-    bigquery.SchemaField("avg_freq",       "FLOAT"),
-    bigquery.SchemaField("total_churn",    "INTEGER"),  # global only: all cancellations
-    bigquery.SchemaField("real_churn",     "INTEGER"),  # all dimensions
-    bigquery.SchemaField("retention_pct",  "FLOAT"),
-]
+_SCHEMA_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "bigquery", "schemas", "retention_history.json"
+)
+
+def _load_schema(path: str) -> list:
+    with open(path) as f:
+        fields = json.load(f)
+    return [
+        bigquery.SchemaField(f["name"], f["type"], mode=f.get("mode", "NULLABLE"))
+        for f in fields
+    ]
+
+BQ_SCHEMA = _load_schema(_SCHEMA_PATH)
 
 
 def ensure_table(bq):
