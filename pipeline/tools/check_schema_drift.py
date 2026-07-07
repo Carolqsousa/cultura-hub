@@ -51,6 +51,7 @@ TABLE_NAME_OVERRIDES: dict[str, str] = {
 # drift this whole tool exists to catch.
 ADDITIONAL_SCHEMA_TARGETS: dict[str, list[str]] = {
     "leads": ["leads_natal"],
+    "tasks": ["tasks_natal"],
 }
 
 SKIP_FILES: dict[str, str] = {

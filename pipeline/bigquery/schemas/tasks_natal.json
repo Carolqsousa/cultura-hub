@@ -1,0 +1,13 @@
+[
+  { "name": "date",           "type": "DATE",    "mode": "REQUIRED" },
+  { "name": "deal_id",        "type": "STRING",  "mode": "NULLABLE" },
+  { "name": "deal_name",      "type": "STRING",  "mode": "NULLABLE" },
+  { "name": "pipeline_id",    "type": "STRING",  "mode": "NULLABLE" },
+  { "name": "pipeline_name",  "type": "STRING",  "mode": "NULLABLE" },
+  { "name": "responsible",    "type": "STRING",  "mode": "NULLABLE" },
+  { "name": "responsible_id", "type": "STRING",  "mode": "NULLABLE" },
+  { "name": "task_subject",   "type": "STRING",  "mode": "NULLABLE" },
+  { "name": "task_due_date",  "type": "DATE",    "mode": "NULLABLE" },
+  { "name": "days_late",      "type": "INT64",   "mode": "NULLABLE" },
+  { "name": "run_date",       "type": "DATE",    "mode": "NULLABLE" }
+]
