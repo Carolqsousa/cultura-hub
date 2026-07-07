@@ -1,0 +1,56 @@
+# .github/workflows/live_schema_drift_check.yml
+#
+# Companion to schema_drift_check.yml, but checks a different boundary:
+# repo schema JSON files  vs.  the ACTUAL live BigQuery table columns.
+#
+# WHY "push to main" ONLY, not pull_request:
+#   This check needs real GCP_CREDENTIALS_JSON to query BigQuery. Pull
+#   request workflows — especially from forks — should never have access
+#   to production secrets. schema_drift_check.yml (the static, no-
+#   credentials version) is safe on every PR; this one deliberately only
+#   runs after code is already merged to main, using the same secret your
+#   other pipelines already trust.
+#
+# WHAT IT WOULD HAVE CAUGHT:
+#   The exact situation from July 2026 — someone had already run a manual
+#   ALTER TABLE adding registered_class_ids directly in BigQuery, but the
+#   checked-in students.json never got updated to match. This check
+#   queries live BigQuery and would have flagged that mismatch the same
+#   day it happened, instead of it surfacing 10 days later as a silent
+#   pipeline outage.
+#
+# THIS DOES NOT MODIFY ANYTHING — read-only queries against
+# INFORMATION_SCHEMA. Safe to run automatically.
+
+name: Live Schema Drift Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pipeline/bigquery/schemas/**"
+  workflow_dispatch:
+  schedule:
+    # Weekly safety net at 09:00 UTC Monday — catches drift introduced by
+    # manual ALTER TABLE runs in BigQuery that never touched the repo at all,
+    # since those wouldn't trigger the push-based run above.
+    - cron: "0 9 * * 1"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install google-cloud-bigquery
+
+      - name: Check repo schema files against live BigQuery tables
+        env:
+          GCP_CREDENTIALS_JSON: ${{ secrets.GCP_CREDENTIALS_JSON }}
+          GCP_PROJECT_ID:       ${{ secrets.GCP_PROJECT_ID }}
+        run: python pipeline/tools/check_live_schema_drift.py

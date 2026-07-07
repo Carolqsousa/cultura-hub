@@ -1,0 +1,43 @@
+# .github/workflows/schema_drift_check.yml
+#
+# Runs on every push and PR that touches pipeline code. Statically checks
+# that every pipeline/sponte/*.py fetcher's row fields match its
+# pipeline/bigquery/schemas/*.json schema — no credentials, no network
+# calls, just source-code analysis. Takes a few seconds.
+#
+# This is what would have caught the 10-day `students` outage (July 2026):
+# registered_class_ids was added to students.py's row dict without adding
+# it to students.json. This check fails the build the moment that happens,
+# instead of the mismatch reaching a scheduled pipeline run in production.
+#
+# NOTE: this check does NOT call the Sponte API or BigQuery — it only reads
+# .py and .json files as text. Safe to run on every commit, including from
+# forks/PRs, with no secrets exposed.
+
+name: Schema Drift Check
+
+on:
+  push:
+    paths:
+      - "pipeline/sponte/**"
+      - "pipeline/bigquery/schemas/**"
+      - "pipeline/tools/check_schema_drift.py"
+  pull_request:
+    paths:
+      - "pipeline/sponte/**"
+      - "pipeline/bigquery/schemas/**"
+      - "pipeline/tools/check_schema_drift.py"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check for schema drift between fetchers and BigQuery schemas
+        run: python pipeline/tools/check_schema_drift.py
