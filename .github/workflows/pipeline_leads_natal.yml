@@ -1,0 +1,48 @@
+# .github/workflows/pipeline_leads_natal.yml
+#
+# Runs the Natal RD Station leads pipeline daily. Separate workflow from
+# the main leads pipeline -- separate RD Station account, separate secret,
+# separate failure blast radius. A Natal API problem shows up as its own
+# red X in Actions, not tangled into the main leads pipeline's history.
+#
+# AUTH NOTE: like pipeline_leads.yml, this uses google-github-actions/auth@v2
+# to turn the GCP_CREDENTIALS_JSON secret into Application Default
+# Credentials (a file + GOOGLE_APPLICATION_CREDENTIALS env var) BEFORE the
+# Python step runs. client.py never reads any credentials directly -- it
+# relies entirely on this step having already run. Skipping it (as an
+# earlier draft of this file did) would fail silently at the first
+# BigQuery call.
+#
+# Deliberately does NOT set SPONTE_BRANCH_CURRENT -- leads_natal has no
+# `branch` column, same as `leads`. See client.py's upsert_rows() for why
+# that distinction matters.
+
+name: Pipeline — Leads (Natal)
+
+on:
+  schedule:
+    - cron: "0 9 * * 1-6"
+    - cron: "0 15 * * 1-6"
+    - cron: "0 17 * * 1-6"
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r pipeline/requirements.txt
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_CREDENTIALS_JSON }}
+      - name: Run Natal leads pipeline
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          BQ_DATASET: cultura_hub
+          RD_STATION_API_KEY_NATAL: ${{ secrets.RD_STATION_API_KEY_NATAL }}
+        run: cd pipeline && python run_leads_natal.py

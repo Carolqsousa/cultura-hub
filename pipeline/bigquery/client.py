@@ -33,6 +33,18 @@ def upsert_rows(table_name, rows, branch=None):
     """
     Delete today's rows for this branch then insert fresh ones.
     Uses load job (no streaming buffer issues).
+
+    WHY THE DELETE MUST SUCCEED BEFORE THE INSERT RUNS:
+    This whole function's safety (safe to rerun without duplicating data)
+    depends on the delete actually clearing today's old rows first. If the
+    delete fails and we insert anyway, today's new rows land ON TOP of the
+    old ones -- silent duplication, no error, nothing visibly wrong. That's
+    the same "silent partial failure" shape found and fixed elsewhere in
+    this project today (a mid-pagination API failure silently truncating
+    data). This function raises on a delete failure instead of warning and
+    continuing, so a real problem here shows up as a loud, red CI failure
+    instead of quietly duplicated rows nobody notices until the numbers
+    look off downstream.
     """
     if not rows:
         print(f"  [bigquery] No rows to write for {table_name}, skipping")
@@ -45,25 +57,28 @@ def upsert_rows(table_name, rows, branch=None):
     # delete today's rows for this branch only
     branch_val = branch or os.environ.get("SPONTE_BRANCH_CURRENT", "")
     if branch_val:
-        try:
-            delete_sql = f"""
-                DELETE FROM `{PROJECT_ID}.{DATASET_ID}.{table_name}`
-                WHERE date = '{today}' AND branch = '{branch_val}'
-            """
-            get_client().query(delete_sql).result()
-            print(f"  [bigquery] Cleared today's {table_name} for {branch_val}")
-        except Exception as e:
-            print(f"  [bigquery] Warning: could not delete {table_name} for {branch_val}: {e}")
+        delete_sql = f"""
+            DELETE FROM `{PROJECT_ID}.{DATASET_ID}.{table_name}`
+            WHERE date = '{today}' AND branch = '{branch_val}'
+        """
     else:
-        # no branch — delete all of today (for leads etc)
-        try:
-            delete_sql = f"""
-                DELETE FROM `{PROJECT_ID}.{DATASET_ID}.{table_name}`
-                WHERE date = '{today}'
-            """
-            get_client().query(delete_sql).result()
-        except Exception as e:
-            print(f"  [bigquery] Warning: could not delete {table_name}: {e}")
+        # no branch — delete all of today (for leads, tasks, leads_natal, etc.)
+        delete_sql = f"""
+            DELETE FROM `{PROJECT_ID}.{DATASET_ID}.{table_name}`
+            WHERE date = '{today}'
+        """
+
+    try:
+        get_client().query(delete_sql).result()
+        print(f"  [bigquery] Cleared today's {table_name}" + (f" for {branch_val}" if branch_val else ""))
+    except Exception as e:
+        # RAISE, not warn-and-continue: inserting on top of a failed delete
+        # silently duplicates every row for today. A loud failure here is
+        # strictly safer than a clean-looking run with corrupted data.
+        raise RuntimeError(
+            f"[bigquery] DELETE failed for {table_name} (branch={branch_val or 'none'}): {e}. "
+            f"Aborting before insert -- proceeding would silently duplicate today's rows."
+        ) from e
 
     # insert using load job with WRITE_APPEND
     job_config = bigquery.LoadJobConfig(

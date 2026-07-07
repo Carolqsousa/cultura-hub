@@ -1,42 +1,27 @@
 #!/usr/bin/env python3
 """
-pipeline/tools/check_schema_drift.py  (v5)
+pipeline/tools/check_schema_drift.py  (v6)
 =============================================
-v3 fixed the silent-blind-spot problem (unrecognized patterns no longer
-look like a pass). Testing v3 against the REAL renewal_tracker.py revealed
-a third problem: that file manages TWO separate BigQuery tables
-(renewal_baseline, renewal_status) in one file, each built in its own
-function with its own embedded schema. v3 unioned every row-building
-pattern in the whole file into one set and compared it against only the
-FIRST schema list it found -- mixing two unrelated tables together and
-reporting fields from one table as "missing" from the other's schema.
+v5 handled every fetcher in pipeline/sponte/. Building the Natal RD
+Station pipeline revealed two more gaps:
 
-v4 fixes this by:
+  1. This checker only ever scanned pipeline/sponte/ -- pipeline/rd_station/
+     (leads.py, tasks.py) was completely outside its reach the whole time,
+     unprotected by any of the work done in v1-v5.
 
-  1. Detecting row-building fields PER FUNCTION, not per file. Each
-     function's `rows.append({...})` / `rows = [{...} for ...]` is
-     collected separately, keyed by the enclosing function name.
+  2. leads.py's fetch() is reused as-is for TWO tables (leads and
+     leads_natal) with identical row shape -- but the checker only ever
+     checked a fetcher against ONE same-named schema. leads_natal.json
+     could silently drift from what leads.py actually produces, forever,
+     with zero protection, since nothing pairs them by default.
 
-  2. Collecting ALL embedded `X = [bigquery.SchemaField(...), ...]` lists
-     in the file (not just the first), keyed by variable name.
+v6 fixes both: FETCHERS_DIRS is now a list of every directory containing
+pipeline code that writes to BigQuery, not a single hardcoded path. And
+ADDITIONAL_SCHEMA_TARGETS lets one fetcher be checked against more than
+one schema, for exactly this "same code, multiple tables" situation.
 
-  3. When a file has exactly one schema source (JSON file, or a single
-     embedded schema list), every function's rows are checked against it
-     -- same as before, unchanged behavior for single-table files.
-
-  4. When a file has MULTIPLE embedded schemas, each function's rows are
-     matched against whichever schema shares the most field names with it
-     (best-overlap match), and checked against THAT one. A correct pairing
-     has near-total overlap; a wrong pairing does not, so this is a
-     reliable way to auto-associate them without needing full data-flow
-     tracing across functions (e.g. rows built in check_status() and
-     actually loaded to BigQuery inside a different function,
-     load_status_rows(), several functions away).
-
-This is now the fourth iteration where testing against REAL code (not
-assumptions) revealed a real design gap. That pattern is worth noticing on
-its own: static analysis tools should be trusted only as far as they've
-been verified against real, known-good and known-bad examples.
+This is the sixth iteration where testing against REAL code (not
+assumptions) revealed a real design gap.
 """
 
 import ast
@@ -44,13 +29,28 @@ import json
 import sys
 from pathlib import Path
 
-REPO_ROOT    = Path(__file__).resolve().parents[2]
-FETCHERS_DIR = REPO_ROOT / "pipeline" / "sponte"
-SCHEMAS_DIR  = REPO_ROOT / "pipeline" / "bigquery" / "schemas"
+REPO_ROOT     = Path(__file__).resolve().parents[2]
+FETCHERS_DIRS = [
+    REPO_ROOT / "pipeline" / "sponte",
+    REPO_ROOT / "pipeline" / "rd_station",
+    REPO_ROOT / "pipeline" / "rd_station_natal",
+]
+SCHEMAS_DIR   = REPO_ROOT / "pipeline" / "bigquery" / "schemas"
 
 TABLE_NAME_OVERRIDES: dict[str, str] = {
     "diary_check":        "diary_checks",
     "retention_snapshot": "retention_history",
+}
+
+# Some fetchers are reused as-is to populate MORE THAN ONE table (e.g.
+# leads.py's fetch() is called once for the main `leads` table and again,
+# unchanged, for `leads_natal` -- same code, different RD Station account).
+# Without this, the checker only ever pairs a fetcher with its one
+# same-named schema, so a second table fed by the same code would never
+# get checked against its own schema file -- exactly the kind of silent
+# drift this whole tool exists to catch.
+ADDITIONAL_SCHEMA_TARGETS: dict[str, list[str]] = {
+    "leads": ["leads_natal"],
 }
 
 SKIP_FILES: dict[str, str] = {
@@ -201,12 +201,36 @@ def best_matching_schema(
     return best_name, fields, required
 
 
+def check_against_json_schema(
+    py_file: Path, schema_file: Path, by_function: dict[str, set[str]]
+) -> list[str]:
+    """Checks every function's row fields against one external JSON schema file."""
+    schema_fields, required_fields = load_json_schema_fields(schema_file)
+    problems: list[str] = []
+    for fn_name, row_fields in by_function.items():
+        extra = row_fields - schema_fields
+        if extra:
+            problems.append(
+                f"{py_file.name}::{fn_name} emits field(s) {sorted(extra)} not "
+                f"declared in {schema_file.name} -- BigQuery will reject every row on load."
+            )
+    missing_required = required_fields - set().union(*by_function.values())
+    if missing_required:
+        problems.append(
+            f"{schema_file.name} marks {sorted(missing_required)} as REQUIRED "
+            f"but no function in {py_file.name} sets them."
+        )
+    return problems
+
+
 def check_file(py_file: Path) -> tuple[str, list[str]]:
     """
     Returns (status, problems): "pass" | "drift" | "unverified".
     A multi-function file is "drift" if ANY function's rows mismatch
     their best-matched schema, "pass" only if every function's rows were
-    found AND matched cleanly.
+    found AND matched cleanly. If this fetcher also appears in
+    ADDITIONAL_SCHEMA_TARGETS, its rows are checked against EVERY listed
+    schema, not just the primary same-named one.
     """
     tree = ast.parse(py_file.read_text(), filename=str(py_file))
 
@@ -225,20 +249,7 @@ def check_file(py_file: Path) -> tuple[str, list[str]]:
     problems: list[str] = []
 
     if schema_file.exists():
-        schema_fields, required_fields = load_json_schema_fields(schema_file)
-        for fn_name, row_fields in by_function.items():
-            extra = row_fields - schema_fields
-            if extra:
-                problems.append(
-                    f"{py_file.name}::{fn_name} emits field(s) {sorted(extra)} not "
-                    f"declared in {schema_file.name} -- BigQuery will reject every row on load."
-                )
-        missing_required = required_fields - set().union(*by_function.values())
-        if missing_required:
-            problems.append(
-                f"{schema_file.name} marks {sorted(missing_required)} as REQUIRED "
-                f"but no function in {py_file.name} sets them."
-            )
+        problems.extend(check_against_json_schema(py_file, schema_file, by_function))
     else:
         embedded = find_all_embedded_schemas(tree)
         if not embedded:
@@ -267,30 +278,51 @@ def check_file(py_file: Path) -> tuple[str, list[str]]:
                     f"but {py_file.name}::{fn_name} never sets them."
                 )
 
+    # Additional schema targets: same fetcher code, other tables it also feeds.
+    for extra_stem in ADDITIONAL_SCHEMA_TARGETS.get(py_file.stem, []):
+        extra_schema_file = SCHEMAS_DIR / f"{extra_stem}.json"
+        if not extra_schema_file.exists():
+            problems.append(
+                f"{py_file.name} is listed as also feeding '{extra_stem}' "
+                f"(see ADDITIONAL_SCHEMA_TARGETS) but "
+                f"{extra_schema_file.relative_to(REPO_ROOT)} doesn't exist."
+            )
+            continue
+        problems.extend(check_against_json_schema(py_file, extra_schema_file, by_function))
+
     return ("drift" if problems else "pass"), problems
 
 
 def main() -> int:
-    if not FETCHERS_DIR.exists():
-        print(f"WARNING: {FETCHERS_DIR} not found -- nothing to check.")
+    existing_dirs = [d for d in FETCHERS_DIRS if d.exists()]
+    missing_dirs  = [d for d in FETCHERS_DIRS if not d.exists()]
+    if not existing_dirs:
+        print(f"WARNING: none of {FETCHERS_DIRS} exist -- nothing to check.")
         return 0
+    if missing_dirs:
+        # Not an error -- e.g. pipeline/rd_station_natal/ won't exist until
+        # that pipeline is actually built. Noted so it's visible, not silent.
+        print(f"Note: not yet present, skipping: {[str(d.relative_to(REPO_ROOT)) for d in missing_dirs]}")
 
     results = {"pass": [], "drift": [], "unverified": []}
     all_problems: list[str] = []
     skipped = []
+    scanned_dirs = []
 
-    for py_file in sorted(FETCHERS_DIR.glob("*.py")):
-        if py_file.name.startswith("__"):
-            continue
-        if py_file.name in SKIP_FILES:
-            skipped.append(py_file.name)
-            continue
-        status, problems = check_file(py_file)
-        results[status].append(py_file.name)
-        all_problems.extend(problems)
+    for fetchers_dir in existing_dirs:
+        scanned_dirs.append(str(fetchers_dir.relative_to(REPO_ROOT)))
+        for py_file in sorted(fetchers_dir.glob("*.py")):
+            if py_file.name.startswith("__"):
+                continue
+            if py_file.name in SKIP_FILES:
+                skipped.append(py_file.name)
+                continue
+            status, problems = check_file(py_file)
+            results[status].append(py_file.name)
+            all_problems.extend(problems)
 
     total = sum(len(v) for v in results.values())
-    print(f"Checked {total} fetcher file(s) in {FETCHERS_DIR.relative_to(REPO_ROOT)}")
+    print(f"Checked {total} fetcher file(s) across: {', '.join(scanned_dirs)}")
     print(f"  PASS:        {len(results['pass'])} -- {', '.join(results['pass']) or '-'}")
     print(f"  DRIFT:       {len(results['drift'])} -- {', '.join(results['drift']) or '-'}")
     print(f"  UNVERIFIED:  {len(results['unverified'])} -- {', '.join(results['unverified']) or '-'}")
