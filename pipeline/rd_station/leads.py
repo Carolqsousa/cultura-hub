@@ -43,6 +43,31 @@ def _bool_field(val):
     return str(val).strip().lower() in ("sim", "yes", "true", "1")
 
 
+# Natal's RD Station account has recorded "Temperatura do Lead" using TWO
+# different dropdown option sets over its history -- likely the options
+# were changed at some point, with older deals keeping their original
+# values. The main account only ever uses Quente/Morno/Frio. Without this,
+# ~17% of Natal's leads (the Alto/Médio/Baixo rows) would silently fail
+# to match any known temperature in downstream charts/filters -- not an
+# error, just quietly miscategorized or dropped.
+# Mapping confirmed directionally correct: Alto (high interest) = Quente
+# (hot), Baixo (low interest) = Frio (cold).
+_TEMP_SCALE_NORMALIZE = {
+    "Alto":  "Quente",
+    "Médio": "Morno",
+    "Baixo": "Frio",
+}
+
+
+def _normalize_temperature(raw):
+    """Maps Natal's alternate Alto/Médio/Baixo scale onto the standard
+    Quente/Morno/Frio scale. Values already in the standard scale (or
+    empty) pass through unchanged -- this is a no-op for the main account."""
+    if not raw:
+        return raw
+    return _TEMP_SCALE_NORMALIZE.get(raw, raw)
+
+
 def _int_field(val):
     """Safely convert a value to int, returning None on failure."""
     try:
@@ -147,7 +172,7 @@ def fetch(rd_client, stage_pipeline_map: dict, stage_pname_map: dict) -> list[di
             "source":            source or "Desconhecido",
             "campaign":          campaign or "",
             "loss_reason":       loss_reason or "",
-            "temperature":       _custom_field(d, "Temperatura do Lead") or "",
+            "temperature":       _normalize_temperature(_custom_field(d, "Temperatura do Lead")) or "",
             "unit_interest":     _custom_field(d, "Unidade de Interesse") or "",
             "semester_interest": _custom_field(d, "Semestre de Interesse") or "",
             "tipo":              _custom_field(d, "Tipo") or "",
