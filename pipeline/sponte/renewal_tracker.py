@@ -222,8 +222,20 @@ def capture_baseline(bq, ending_sem, milestone_date):
 # --- Sponte API - next semester classes ---------------------------------------
 
 def fetch_next_semester_class_ids(branch, api_key, next_sem):
+    """
+    Returns (class_ids, ok).
+    ok=False means the API call itself failed (network/timeout/5xx) -- the
+    caller must NOT treat that the same as "zero classes exist", since a
+    failed call gives no real information about who has or hasn't renewed.
+    ok=True with an empty set is a genuinely different situation: the call
+    succeeded, there just aren't any next-semester classes matching yet
+    (normal right after a milestone, before next-semester classes are
+    created in Sponte) -- or the name-matching convention doesn't apply to
+    this branch (known issue: Natal uses different semester naming).
+    """
     if not api_key:
-        return set()
+        return set(), True  # branch not configured -- legitimately nothing to fetch
+
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
@@ -235,11 +247,15 @@ def fetch_next_semester_class_ids(branch, api_key, next_sem):
         classes = r.json()
     except Exception as e:
         print(f"    WARNING [{branch}] Failed to fetch classes: {e}")
-        return set()
+        return set(), False
 
     ids = {str(c["class_id"]) for c in classes if next_sem in c.get("name", "")}
     print(f"    [{branch}] {len(ids)} classes found for {next_sem}")
-    return ids
+    if not ids:
+        print(f"    NOTE [{branch}] zero classes matched '{next_sem}' -- either next-"
+              f"semester classes don't exist in Sponte yet, or this branch's class "
+              f"names don't follow the '{next_sem}' convention (known issue: Natal).")
+    return ids, True
 
 
 # --- Step 2: Check status (every day, using frozen baseline) -----------------
@@ -283,8 +299,12 @@ def check_status(bq, ending_sem):
 
     print(f"  Fetching {next_sem} classes from Sponte...")
     next_sem_classes_by_branch = {}
+    failed_fetch_branches = set()
     for branch, api_key in BRANCHES.items():
-        next_sem_classes_by_branch[branch] = fetch_next_semester_class_ids(branch, api_key, next_sem)
+        ids, ok = fetch_next_semester_class_ids(branch, api_key, next_sem)
+        next_sem_classes_by_branch[branch] = ids
+        if not ok:
+            failed_fetch_branches.add(branch)
         time.sleep(0.2)
 
     # Students present on ANY of the recent dates, keyed by (student_id,
@@ -307,6 +327,12 @@ def check_status(bq, ending_sem):
     # means ITS upload pipeline has been failing, not that all its
     # students cancelled at once. Skip Cancelado evaluation for these
     # branches this run rather than mass-flagging real students.
+    # Two independent reasons a branch's data can't be trusted this run:
+    #   1. dead_branches           -- students table has no snapshot for them
+    #   2. failed_fetch_branches   -- the live Sponte /classes call itself failed
+    # Either one means "don't evaluate this branch's students today" --
+    # a failed API call carries zero information about who has renewed,
+    # same as a missing snapshot carries zero information about who's left.
     branches_with_data = {s["branch"] for s in recent_students}
     baseline_branches = {b["branch"] for b in baseline}
     dead_branches = baseline_branches - branches_with_data
@@ -314,13 +340,18 @@ def check_status(bq, ending_sem):
         print(f"  WARNING: no students data at all for {sorted(dead_branches)} across "
               f"the last {len(recent_dates)} snapshots -- likely a pipeline outage, "
               f"not real cancellations. Leaving these branches' status untouched this run.")
+    if failed_fetch_branches:
+        print(f"  WARNING: Sponte /classes call failed for {sorted(failed_fetch_branches)} -- "
+              f"cannot determine renewal status without a working next-semester class list. "
+              f"Leaving these branches' status untouched this run.")
+    skip_branches = dead_branches | failed_fetch_branches
 
     now = datetime.now(timezone.utc).isoformat()
     rows = []
 
     for b in baseline:
-        if b["branch"] in dead_branches:
-            continue  # can't tell -- branch's own snapshot pipeline is down
+        if b["branch"] in skip_branches:
+            continue  # can't tell -- this branch's data is untrustworthy this run
 
         key = (b["student_id"], b["branch"])
         latest = presence_map.get(key)
@@ -353,7 +384,7 @@ def check_status(bq, ending_sem):
     # healthy_branches: return alongside rows so load_status_rows only
     # replaces status for branches we actually had fresh data for --
     # dead branches' last known status stays in the table untouched.
-    healthy_branches = baseline_branches - dead_branches
+    healthy_branches = baseline_branches - skip_branches
     return rows, healthy_branches
 
 
