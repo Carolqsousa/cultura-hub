@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { BigQuery } from "@google-cloud/bigquery";
+import { serializeBQRows } from "@/lib/bq-serialize";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,6 +69,9 @@ export async function GET(req: NextRequest) {
     `;
 
     // ── 3. DETAIL LIST — all students with status ──────────────────────────
+    // NOTE: latest_check_date and baseline_date are DATE columns. The
+    // BigQuery driver returns these as { value: "YYYY-MM-DD" } wrapper
+    // objects, not plain strings — serializeBQRows() below unwraps them.
     const detailSQL = `
       SELECT
         rs.student_id,
@@ -101,7 +105,11 @@ export async function GET(req: NextRequest) {
       bqQuery(metaSQL),
     ]);
 
-    return NextResponse.json({ summary, byBranch, detail, meta: meta[0] || null });
+    // Every field that reaches the browser goes through serializeBQRows
+    // first, so DATE/NUMERIC/INT64 wrapper objects never leak into JSX.
+    return NextResponse.json(
+      serializeBQRows({ summary, byBranch, detail, meta: meta[0] || null })
+    );
 
   } catch (err: any) {
     console.error("[/api/renewal]", err.message);
