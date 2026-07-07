@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-pipeline/tools/check_schema_drift.py  (v4)
+pipeline/tools/check_schema_drift.py  (v5)
 =============================================
 v3 fixed the silent-blind-spot problem (unrecognized patterns no longer
 look like a pass). Testing v3 against the REAL renewal_tracker.py revealed
@@ -54,6 +54,12 @@ TABLE_NAME_OVERRIDES: dict[str, str] = {
 }
 
 SKIP_FILES: dict[str, str] = {
+    "debug_drive.py": (
+        "Manual diagnostic script for troubleshooting the Drive connection "
+        "cancellations_xls.py depends on. Never writes to BigQuery -- prints "
+        "Drive API test results to stdout for a human to read. Run manually "
+        "only, never on a schedule."
+    ),
     "parse_sponte_xls.py": (
         "Parsing helper consumed by cancellations_xls.py, which builds the "
         "actual BigQuery rows and is checked directly against its own "
@@ -100,6 +106,19 @@ def find_row_fields_by_function(tree: ast.Module) -> dict[str, set[str]]:
                 and isinstance(child.value, ast.ListComp)
                 and isinstance(child.value.elt, ast.Dict)
             ):
+                keys = _dict_keys(child.value.elt)
+            elif (
+                isinstance(child, ast.Return)
+                and isinstance(child.value, ast.ListComp)
+                and isinstance(child.value.elt, ast.Dict)
+            ):
+                # Pattern 3: `return [{...} for x in y]` -- output built and
+                # returned directly, never assigned to a variable at all.
+                # (retention_snapshot.py's capture_* functions all do this;
+                # the "rows" name in that file refers to the SQL query
+                # result being iterated, not the output being produced --
+                # a good example of why variable-name matching alone has
+                # limits, and structural patterns matter more than names.)
                 keys = _dict_keys(child.value.elt)
             if keys:
                 result.setdefault(scope_name, set())
@@ -195,7 +214,8 @@ def check_file(py_file: Path) -> tuple[str, list[str]]:
     if not by_function:
         return "unverified", [
             f"{py_file.name}: no recognized row-building pattern found "
-            f"(checked for rows.append({{...}}) and rows = [{{...}} for ...]). "
+            f"(checked for rows.append({{...}}), rows = [{{...}} for ...], and "
+            f"return [{{...}} for ...]). "
             f"This file's output has NOT been verified against any schema."
         ]
 
