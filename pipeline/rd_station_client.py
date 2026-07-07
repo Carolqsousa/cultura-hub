@@ -7,8 +7,18 @@ import urllib.error
 
 
 BASE_URL = "https://crm.rdstation.com/api/v1"
-TIMEOUT  = 10    # seconds before a request fails fast instead of hanging
-DELAY    = 0.5   # seconds between paginated requests to avoid rate limiting
+TIMEOUT      = 20   # seconds before a single attempt fails fast instead of hanging
+                     # (raised from 10s -- a real production timeout was hit at 10s
+                     # under normal API load, not a genuine outage)
+DELAY        = 0.5  # seconds between successful paginated requests (rate limiting)
+RETRY_COUNT  = 3     # attempts per request before giving up entirely
+RETRY_DELAY  = 2     # seconds before the first retry; doubles each subsequent attempt
+
+# HTTP codes that mean "this will never succeed by retrying" -- a bad token
+# or bad URL doesn't fix itself. Retrying these just delays an inevitable
+# failure. Anything not in this set (timeouts, 5xx server errors, etc.) is
+# treated as transient and worth retrying.
+_NON_TRANSIENT_HTTP_CODES = {400, 401, 403, 404}
 
 
 class RDStationAPIError(Exception):
@@ -57,19 +67,47 @@ class RDStationClient:
         self.label = f":{label}" if label else ""
 
     def _get(self, path: str, params: dict = None) -> dict | None:
+        """
+        Makes a GET request, retrying transient failures (timeouts, 5xx
+        errors) up to RETRY_COUNT times with increasing delay before giving
+        up. Non-transient failures (bad token, bad URL -- see
+        _NON_TRANSIENT_HTTP_CODES) fail immediately on the first attempt,
+        since retrying can't fix a wrong credential.
+
+        Returns None only after every retry has been exhausted (or
+        immediately for a non-transient error) -- callers (get_all_deals,
+        etc.) treat None as "this call genuinely failed" and raise
+        RDStationAPIError rather than silently continuing with partial data.
+        """
         qs  = "&".join(f"{k}={v}" for k, v in (params or {}).items())
         sep = "&" if qs else ""
         url = f"{BASE_URL}{path}?token={self.token}{sep}{qs}"
-        req = urllib.request.Request(url)
-        try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as res:
-                return json.loads(res.read().decode())
-        except urllib.error.HTTPError as e:
-            print(f"[RDStation{self.label}] HTTP {e.code} on GET {path}")
-            return None
-        except Exception as e:
-            print(f"[RDStation{self.label}] Error on GET {path}: {e}")
-            return None
+
+        last_error = None
+        for attempt in range(1, RETRY_COUNT + 1):
+            req = urllib.request.Request(url)
+            try:
+                with urllib.request.urlopen(req, timeout=TIMEOUT) as res:
+                    return json.loads(res.read().decode())
+            except urllib.error.HTTPError as e:
+                if e.code in _NON_TRANSIENT_HTTP_CODES:
+                    print(f"[RDStation{self.label}] HTTP {e.code} on GET {path} "
+                          f"-- not retrying, this won't succeed on retry")
+                    return None
+                last_error = e
+                print(f"[RDStation{self.label}] HTTP {e.code} on GET {path} "
+                      f"(attempt {attempt}/{RETRY_COUNT})")
+            except Exception as e:
+                last_error = e
+                print(f"[RDStation{self.label}] Error on GET {path} "
+                      f"(attempt {attempt}/{RETRY_COUNT}): {e}")
+
+            if attempt < RETRY_COUNT:
+                time.sleep(RETRY_DELAY * attempt)  # 2s, then 4s
+
+        print(f"[RDStation{self.label}] GET {path} failed after {RETRY_COUNT} "
+              f"attempts, last error: {last_error}")
+        return None
 
     # ── Deals ──────────────────────────────────────────────────────────────────
 
