@@ -11,3 +11,11 @@ export function canAccess(role: string | undefined | null, path: string): boolea
   if (!allowed) return false;
   return allowed.includes("*") || allowed.includes(path);
 }
+
+export function firstAllowedPage(role: string | undefined | null): string {
+  if (!role) return "/login";
+  const allowed = ROLE_PAGES[role];
+  if (!allowed || allowed.length === 0) return "/no-access";
+  if (allowed.includes("*")) return "/";
+  return allowed[0];
+}

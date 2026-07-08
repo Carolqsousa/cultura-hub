@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useSession } from "next-auth/react";
+import { canAccess } from "@/lib/permissions";
 
 const NAV_LINKS = [
   { href: "/",          label: "Overview" },
@@ -15,6 +17,8 @@ const NAV_LINKS = [
 
 export default function DashboardShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  const { data: session } = useSession();
+  const role = (session?.user as any)?.role ?? null;
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -39,7 +43,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       <div className="flex flex-1 overflow-hidden">
         {/* Collapsible sidebar */}
         <nav className={`shrink-0 border-r bg-white flex flex-col gap-1 transition-all duration-200 overflow-hidden ${collapsed ? "w-0 p-0" : "w-56 p-4"}`}>
-          {NAV_LINKS.map(({ href, label }) => (
+          {NAV_LINKS.filter(({ href }) => canAccess(role, href)).map(({ href, label }) => (
             <a
               key={href}
               href={href}
