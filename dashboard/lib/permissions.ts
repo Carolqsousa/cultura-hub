@@ -19,3 +19,27 @@ export function firstAllowedPage(role: string | undefined | null): string {
   if (allowed.includes("*")) return "/";
   return allowed[0];
 }
+
+// Maps an API route back to the page it serves, so middleware can check
+// permission against the PAGE the data belongs to, not the API path itself.
+const API_TO_PAGE: Record<string, string> = {
+  "/api/overview":         "/",
+  "/api/students":         "/students",
+  "/api/financial":        "/financial",
+  "/api/teachers":         "/teachers",
+  "/api/comercial":        "/comercial",
+  "/api/commercial":       "/commercial",
+  "/api/commercial-natal": "/commercial-natal",
+  "/api/quality":          "/quality",
+  "/api/todos":            "/todos",
+};
+
+export function resolvePathForAccessCheck(pathname: string): string {
+  if (!pathname.startsWith("/api/")) return pathname;
+  for (const [apiPrefix, page] of Object.entries(API_TO_PAGE)) {
+    if (pathname === apiPrefix || pathname.startsWith(apiPrefix + "/")) {
+      return page;
+    }
+  }
+  return pathname; // unmapped API route — falls through to normal (likely denied) check
+}
