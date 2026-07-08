@@ -2,7 +2,7 @@
 //
 // WHAT THIS FILE DOES:
 // Serves all data for the /commercial page from BigQuery.
-// Runs 5 queries in parallel, each returning one "shape" of data
+// Runs 8 queries in parallel, each returning one "shape" of data
 // that maps to a specific section of the page.
 //
 // ARCHITECTURE DECISION — Why an API route and not direct BigQuery from browser:
@@ -37,6 +37,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { BigQuery } from "@google-cloud/bigquery";
+import { serializeBQRows } from "@/lib/bq-serialize";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -337,6 +338,58 @@ export async function GET(req: NextRequest) {
       ORDER BY entry_month
     `;
 
+    // ── Query 8: Late tasks by responsible ─────────────────────────────────
+    // Was on the old Portuguese /comercial page ("Tarefas atrasadas por
+    // atendente"), dropped during the rebuild to pipeline_name -- adding
+    // it back here, in the new schema.
+    //
+    // WHY THIS DOESN'T REUSE `base`:
+    //   `base` is built from the `leads` table. Late tasks live in a
+    //   separate `tasks` table (different shape entirely -- see tasks.py's
+    //   own docstring on why leads/tasks aren't merged into one table).
+    //
+    // WHY THIS DOESN'T USE QUALIFY ROW_NUMBER() LIKE OTHER QUERIES:
+    //   Every other query dedupes to "most recent snapshot per deal_id"
+    //   because a deal only has ONE current state. Tasks are different: one
+    //   deal can have SEVERAL late tasks open at once. Partitioning by
+    //   deal_id and keeping only 1 row would silently discard every task
+    //   but one per deal -- wrong for a completely different reason than
+    //   "duplicate data", so it needs different handling, not the same
+    //   pattern copy-pasted.
+    //
+    // WHAT "CURRENT" MEANS HERE: the tasks table is a full daily rebuild --
+    // each day's rows ARE that day's complete list of currently-late tasks
+    // (see tasks.py: it only ever emits tasks that are overdue right now).
+    // So "late tasks" is inherently a snapshot-in-time question, not a
+    // date-range question like leads volume is. This shows the MOST RECENT
+    // snapshot on or before the selected end date, not a sum across the
+    // whole range -- summing daily snapshots would massively overcount,
+    // since the same overdue task appears again in every day's snapshot
+    // until it's resolved.
+    const lateTasksSQL = `
+      WITH latest_task_date AS (
+        SELECT MAX(date) AS d
+        FROM \`${PROJECT}.${DATASET}.tasks\`
+        WHERE date <= DATE('${esc(endDate)}')
+      ),
+      latest_tasks AS (
+        SELECT t.*
+        FROM \`${PROJECT}.${DATASET}.tasks\` t, latest_task_date
+        WHERE t.date = latest_task_date.d
+          ${funnel !== "all" ? `AND ${FUNNEL_EXPR} = '${esc(funnel)}'` : ""}
+          ${responsible !== "all" ? `AND responsible = '${esc(responsible)}'` : ""}
+      )
+      SELECT
+        COALESCE(NULLIF(TRIM(responsible), ''), 'Sem Responsável') AS responsible,
+        COUNT(*)                          AS total,
+        COUNTIF(days_late >= 7)           AS over_7d,
+        MAX(days_late)                    AS max_days_late,
+        ROUND(AVG(days_late), 1)          AS avg_days_late
+      FROM latest_tasks
+      GROUP BY responsible
+      ORDER BY total DESC
+    `;
+
     // ── Query 7: Available filters ─────────────────────────────────────────
     // Returns every funnel/responsible that has data in the FULL date
     // range -- deliberately ignoring whatever funnel/responsible is
@@ -356,13 +409,13 @@ export async function GET(req: NextRequest) {
       ORDER BY funnel, total DESC
     `;
 
-    // Run all 7 queries in parallel.
+    // Run all 8 queries in parallel.
     // Promise.all waits for ALL to complete before returning.
     // If ANY query fails, the entire request fails — we don't return
     // partial data that would confuse the user.
     // RISK: If one slow query blocks the page, consider splitting into
     // separate API routes for above-the-fold (KPIs) and below-the-fold (charts).
-    const [kpis, monthly, bySource, byResponsible, lossReasons, cohort, filters] =
+    const [kpis, monthly, bySource, byResponsible, lossReasons, cohort, lateTasks, filters] =
       await Promise.all([
         bqQuery(kpisSQL),
         bqQuery(monthlySQL),
@@ -370,6 +423,7 @@ export async function GET(req: NextRequest) {
         bqQuery(byResponsibleSQL),
         bqQuery(lossReasonsSQL),
         bqQuery(cohortSQL),
+        bqQuery(lateTasksSQL),
         bqQuery(filtersSQL),
       ]);
 
@@ -383,13 +437,14 @@ export async function GET(req: NextRequest) {
       if (r.responsible) respSet.add(r.responsible);
     });
 
-    return NextResponse.json({
+    return NextResponse.json(serializeBQRows({
       kpis:            kpis[0] || {},
       monthly,
       bySource,
       byResponsible,
       lossReasons,
       cohort,
+      lateTasks,
       availableFunnels:      Array.from(funnelSet).sort(),
       availableResponsibles: Array.from(respSet).sort(),
       meta: {
@@ -399,7 +454,7 @@ export async function GET(req: NextRequest) {
         responsible,
         generatedAt: new Date().toISOString(),
       },
-    });
+    }));
 
   } catch (err: any) {
     console.error("[/api/commercial]", err.message);

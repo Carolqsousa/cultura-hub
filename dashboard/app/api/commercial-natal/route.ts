@@ -42,6 +42,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { BigQuery } from "@google-cloud/bigquery";
+import { serializeBQRows } from "@/lib/bq-serialize";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -441,7 +442,7 @@ export async function GET(req: NextRequest) {
       if (r.responsible) respSet.add(r.responsible);
     });
 
-    return NextResponse.json({
+    return NextResponse.json(serializeBQRows({
       kpis:            kpis[0] || {},
       monthly,
       bySource,
@@ -458,7 +459,7 @@ export async function GET(req: NextRequest) {
         responsible,
         generatedAt: new Date().toISOString(),
       },
-    });
+    }));
 
   } catch (err: any) {
     console.error("[/api/commercial-natal]", err.message);
