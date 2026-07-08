@@ -118,17 +118,23 @@ export default function FinancialPage() {
     [students]
   );
 
-  const totalValue        = useMemo(() => students.reduce((s, r) => s + Number(r.total_value), 0), [students]);
-  const totalInstallments = useMemo(() => students.reduce((s, r) => s + Number(r.open_installments), 0), [students]);
+  // Branch-filtered base — every KPI and the table read from this, so they never drift apart
+  const branchFiltered = useMemo(() =>
+    students.filter(s => branch === "all" || s.branch === branch),
+    [students, branch]
+  );
+
+  const totalValue        = useMemo(() => branchFiltered.reduce((s, r) => s + Number(r.total_value), 0), [branchFiltered]);
+  const totalInstallments = useMemo(() => branchFiltered.reduce((s, r) => s + Number(r.open_installments), 0), [branchFiltered]);
   const paidCount = useMemo(() => {
-    return students.filter(s => {
+    return branchFiltered.filter(s => {
       const key = `${s.student_id}-${s.branch}-${s.oldest_maturity || ""}`;
       return tracking[key]?.status === "Pago";
     }).length;
-  }, [students, tracking]);
+  }, [branchFiltered, tracking]);
 
   const filtered = useMemo(() => {
-    let rows = students.filter(s => branch === "all" || s.branch === branch).map(s => ({
+    let rows = branchFiltered.map(s => ({
       ...s,
       tracking: tracking[`${s.student_id}-${s.branch}-${s.oldest_maturity || ''}`] || { status: "Sem contato", notes: "" },
     }));
@@ -212,7 +218,7 @@ export default function FinancialPage() {
 <div className="grid grid-cols-4 gap-4 no-print">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Alunos em atraso</p>
-          <p className="text-3xl font-bold text-red-600">{students.length}</p>
+          <p className="text-3xl font-bold text-red-600">{branchFiltered.length}</p>
         </div>
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
           <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Total em aberto</p>
