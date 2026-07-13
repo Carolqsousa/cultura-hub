@@ -20,6 +20,16 @@ RETRY_DELAY  = 2     # seconds before the first retry; doubles each subsequent a
 # treated as transient and worth retrying.
 _NON_TRANSIENT_HTTP_CODES = {400, 401, 403, 404}
 
+# RD Station's list endpoints (deals, companies, contacts, tasks) hit a
+# hard wall at 10,000 records per fetch -- confirmed against their own
+# docs after get_all_tasks crashed in production on 2026-07-09 (HTTP 400
+# on page 51, right at the 10k mark). There is no way to page past this;
+# the only fix is to shrink what you're asking for (e.g. done=False)
+# before you get there. This constant is a tripwire, not a limit we
+# enforce -- it just makes the wall visible in logs well before you hit
+# it, instead of finding out via a crashed pipeline run.
+_SOFT_CAP_WARNING = 8000
+
 
 class RDStationAPIError(Exception):
     """
@@ -109,6 +119,21 @@ class RDStationClient:
               f"attempts, last error: {last_error}")
         return None
 
+    def _warn_if_near_cap(self, entity: str, count: int) -> None:
+        """
+        Logs a visible warning once a paginated fetch crosses
+        _SOFT_CAP_WARNING, well before RD Station's real 10,000-record
+        wall would turn into a hard failure. Call this after each page is
+        appended, not just at the end -- the goal is to see it coming in
+        the logs of a run that still succeeded, not only after one fails.
+        """
+        if count == _SOFT_CAP_WARNING:
+            print(f"⚠️  [RDStation{self.label}] {entity} fetch has reached "
+                  f"{count} records -- RD Station's list endpoints cap out "
+                  f"at 10,000. Approaching the wall; consider narrowing this "
+                  f"fetch (date range, status filter, etc.) before it starts "
+                  f"failing outright.")
+
     # ── Deals ──────────────────────────────────────────────────────────────────
 
     def get_all_deals(self) -> list:
@@ -138,6 +163,7 @@ class RDStationClient:
                 )
             deals = d.get("deals", [])
             all_deals.extend(deals)
+            self._warn_if_near_cap("get_all_deals", len(all_deals))
             if not d.get("has_more"):
                 break
             page += 1
@@ -200,13 +226,34 @@ class RDStationClient:
 
     # ── Tasks ──────────────────────────────────────────────────────────────────
 
-    def get_all_tasks(self) -> list:
-        """Fetch all tasks, paginated. Raises RDStationAPIError on a failed
-        page instead of silently returning a truncated list."""
+    def get_all_tasks(self, done: bool | None = None) -> list:
+        """
+        Fetch tasks, paginated. Raises RDStationAPIError on a failed page
+        instead of silently returning a truncated list.
+
+        Parameters
+        ----------
+        done : bool or None, optional
+            Server-side filter passed to RD Station. Default None fetches
+            every task regardless of status -- unchanged old behavior, so
+            any other existing caller of get_all_tasks() keeps working
+            exactly as before.
+
+            Pass done=False to fetch only incomplete tasks. This isn't
+            just a convenience filter -- RD Station's list endpoints cap
+            out at 10,000 records per fetch (confirmed against their docs
+            after this hit production on 2026-07-09: HTTP 400 on page 51,
+            right at 10,000 tasks collected). The filter has to be applied
+            server-side to help, since the cap is hit *while fetching*,
+            before any local filtering ever gets a chance to run.
+        """
         all_tasks = []
         page = 1
         while True:
-            d = self._get("/tasks", {"page": page, "limit": 200})
+            params = {"page": page, "limit": 200}
+            if done is not None:
+                params["done"] = "true" if done else "false"
+            d = self._get("/tasks", params)
             if d is None:
                 raise RDStationAPIError(
                     f"[RDStation{self.label}] get_all_tasks failed on page {page} "
@@ -215,6 +262,7 @@ class RDStationClient:
                 )
             tasks = d.get("tasks", [])
             all_tasks.extend(tasks)
+            self._warn_if_near_cap("get_all_tasks", len(all_tasks))
             if not d.get("has_more"):
                 break
             page += 1

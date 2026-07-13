@@ -17,6 +17,15 @@ It does NOT include deal_stage. Without a stage_id, we can't look up
 the pipeline from the stage maps. Instead, we use a deal_id->pipeline_name
 map built from the leads rows already fetched in run_leads.py.
 Zero extra API calls — we reuse data already in memory.
+
+Why we fetch with done=False (2026-07-09):
+RD Station's list endpoints cap out at 10,000 records per fetch -- this
+account's task history (done + not done, going back to whenever the
+account started) crossed that wall and get_all_tasks() started failing
+with HTTP 400 on page 51. Since this page only ever needed the *late*
+(overdue + undone) subset anyway, filtering to done=False server-side
+both fixes the crash and matches what the page actually uses -- it's
+not a workaround bolted on top of unrelated logic.
 """
 
 from datetime import date
@@ -66,15 +75,22 @@ def fetch(
     today    = date.today().isoformat()
     today_dt = date.today()
 
-    print(f"  [tasks] Fetching all tasks...")
-    tasks = rd_client.get_all_tasks()
+    print(f"  [tasks] Fetching incomplete tasks...")
+    # done=False is a server-side filter (see module docstring) -- it's
+    # what keeps this fetch under RD Station's 10,000-record cap, not
+    # just a local optimization. Do not remove this without re-checking
+    # the total task count against that cap first.
+    tasks = rd_client.get_all_tasks(done=False)
 
     rows       = []
     late_count = 0
     skip_count = 0
 
     for t in tasks:
-        # Skip completed tasks
+        # Belt-and-suspenders: the API filter above should already
+        # guarantee this, but a task could in principle flip to done in
+        # the moment between the fetch starting and this loop running.
+        # Cheap to check locally, costly to trust blindly.
         if t.get("done"):
             skip_count += 1
             continue
@@ -136,5 +152,6 @@ def fetch(
         })
         late_count += 1
 
-    print(f"  [tasks] {late_count} late tasks ({skip_count} skipped — done or not yet due)")
+    print(f"  [tasks] Fetched {len(tasks)} incomplete tasks from RD Station")
+    print(f"  [tasks] {late_count} late tasks ({skip_count} skipped — not yet due)")
     return rows
