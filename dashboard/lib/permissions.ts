@@ -1,8 +1,8 @@
 export const ROLE_PAGES: Record<string, string[]> = {
   "Super Admin": ["*"],
-  "Manager":     ["/", "/financial", "/students", "/teachers", "/comercial", "/commercial-natal", "/quality", "/todos"],
+  "Manager":     ["/", "/financial", "/students", "/teachers", "/commercial", "/commercial-natal", "/quality", "/todos"],
   "ACD":         ["/students", "/teachers", "/quality"],
-  "Front Desk":  ["/", "/financial", "/students", "/teachers", "/comercial", "/commercial-natal", "/quality"],
+  "Front Desk":  ["/", "/financial", "/students", "/teachers", "/commercial", "/commercial-natal", "/quality"],
 };
 
 export function canAccess(role: string | undefined | null, path: string): boolean {
@@ -27,10 +27,10 @@ const API_TO_PAGE: Record<string, string> = {
   "/api/students":         "/students",
   "/api/financial":        "/financial",
   "/api/teachers":         "/teachers",
-  "/api/comercial":        "/comercial",
   "/api/commercial":       "/commercial",
   "/api/commercial-natal": "/commercial-natal",
   "/api/quality":          "/quality",
+  "/api/renewal":          "/quality",
   "/api/todos":            "/todos",
 };
 
