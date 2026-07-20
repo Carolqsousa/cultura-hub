@@ -2,7 +2,7 @@ export const ROLE_PAGES: Record<string, string[]> = {
   "Super Admin": ["*"],
   "Manager":     ["/", "/financial", "/students", "/teachers", "/commercial", "/commercial-natal", "/quality", "/todos"],
   "ACD":         ["/students", "/teachers", "/quality"],
-  "Front Desk":  ["/", "/financial", "/students", "/teachers", "/commercial", "/commercial-natal", "/quality"],
+  "Front Desk":  ["/", "/financial", "/students", "/teachers", "/quality"],
 };
 
 export function canAccess(role: string | undefined | null, path: string): boolean {
