@@ -462,6 +462,11 @@ export default function CommercialPage() {
               tooltip="Tempo médio entre criação do lead e fechamento da venda" />
           </div>
         )}
+        {!loading && data && data.kpis.paused > 0 && (
+          <p className="text-xs text-gray-400 mt-2">
+            * {fmtNum(data.kpis.paused)} leads pausados (não contabilizados em "Em Andamento")
+          </p>
+        )}
 
         {/* ── Volume mensal ── */}
         <SectionTitle>Volume Mensal de Leads e Vendas</SectionTitle>
