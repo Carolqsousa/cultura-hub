@@ -74,6 +74,17 @@ function parseDate(str: string) {
   return new Date(y, m - 1, d); // local time, no UTC conversion
 }
 
+function todayLocalStr() {
+  // Local calendar date as YYYY-MM-DD. Deliberately not toISOString(),
+  // which converts to UTC and can land on the wrong day depending on
+  // the time of day and the server/browser's timezone offset.
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export default function FinancialPage() {
   const [students, setStudents]   = useState<FinancialStudent[]>([]);
   const [tracking, setTracking]   = useState<Record<string, TrackingRecord>>({});
@@ -83,7 +94,7 @@ export default function FinancialPage() {
 
   const [branch, setBranch]             = useState("all");
   const [startDate, setStartDate]       = useState("2026-01-01");
-  const [endDate, setEndDate]           = useState("2026-12-31");
+  const [endDate, setEndDate]           = useState(() => todayLocalStr());
   const [search, setSearch]             = useState("");
   const [sortKey, setSortKey]           = useState<SortKey>("total_value");
   const [sortAsc, setSortAsc]           = useState(false);

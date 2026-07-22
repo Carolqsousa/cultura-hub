@@ -2,11 +2,19 @@ import { query, DATASET } from "@/lib/bigquery";
 
 export const dynamic = "force-dynamic";
 
+function todayLocalStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const branch     = searchParams.get("branch") || "all";
   const startDate  = searchParams.get("start_date") || "2026-01-01";
-  const endDate    = searchParams.get("end_date") || "2026-12-31";
+  const endDate    = searchParams.get("end_date") || todayLocalStr();
 
   const branchFilter = branch !== "all" ? `AND f.branch = '${branch}'` : "";
 
